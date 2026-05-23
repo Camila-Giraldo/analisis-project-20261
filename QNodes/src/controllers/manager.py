@@ -54,17 +54,29 @@ class Manager:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def cargar_red(self) -> np.ndarray:
+        if not self.tpm_filename.exists():
+            self.generar_red(
+                len(self.estado_inicial),
+                datos_deterministas=False,
+                interactivo=False,
+            )
         dataset = np.genfromtxt(self.tpm_filename, delimiter=COLON_DELIM)
         return dataset
 
-    def generar_red(self, dimensiones: int, datos_deterministas: bool = True) -> str:
+    def generar_red(
+        self,
+        dimensiones: int,
+        datos_deterministas: bool = False,
+        interactivo: bool = True,
+    ) -> str:
         """
         Se encarga de generar una red (TPM) en notación little endian para un sistema determinista o estocástico (esto en función a si contiene datos discretos o no respectivamente. Nunca confundir con un "Sistema continuo" puesto apela a otra definición totalmente diferente).
         La red generada almacenará en el "output_dir", un atributo dinámico en función a que si generaste una red de un tamaño X por primera vez, estará etiquetada como "A", si deseas generar otra red del mismo tamaño naturalmente contendrá los mismos datos puesto están determinados por la semilla numpy, de forma que la forma de obtener otra red diferente es actuando sobre el parámetro `datos_deterministas`, siendo estas dos redes distintas en su contenido.
 
         Args:
             dimensiones (int): Número de nodos/elementos/variables/canales que se desea maneje la red, obteniendo un Sistema que para cada estado en $(t)$ tendrá un canalen $(t+1)$.
-            datos_deterministas (bool, optional): Selecciona si se quiere que la red generada sea estocástica, con el valor de probabilidad como siempre, un real positivo entre 0 y 1 inclusivo. Por defecto es True.
+            datos_deterministas (bool, optional): Selecciona si se quiere que la red generada sea estocástica, con el valor de probabilidad como siempre, un real positivo entre 0 y 1 inclusivo. Por defecto es False.
+            interactivo (bool, optional): Si es True (por defecto), preguntará antes de sobrescribir archivos existentes o si el tamaño supera 1GB. Si es False, generará o sobrescribirá automáticamente sin preguntar.
 
         Raises:
             ValueError: Si las dimensiones son menores a 1.
@@ -86,7 +98,8 @@ class Manager:
         print(f"Tiempo estimado: {estimated_time:.1f} segundos")
 
         if (
-            total_size_gb > 1
+            interactivo
+            and total_size_gb > 1
             and input("El sistema ocupará más de 1GB. ¿Continuar? (s/n): ").lower()
             != "s"
         ):
@@ -98,6 +111,8 @@ class Manager:
 
         suffix = ABC_START
         while (base_path / f"N{dimensiones}{suffix}.{CSV_EXTENSION}").exists():
+            if not interactivo:
+                break
             if (
                 input(
                     f"Ya existe N{dimensiones}{suffix}.{CSV_EXTENSION}. ¿Generar nueva red? (s/n): "
@@ -130,7 +145,7 @@ class Manager:
             filepath,
             states,
             delimiter=COLON_DELIM,
-            fmt="%d" if datos_deterministas else "%.6f",
+            fmt="%d" if datos_deterministas else "%.8f",
         )
 
         file_size_gb = os.path.getsize(filepath) / (1024**3)
