@@ -54,4 +54,5 @@ htmlcov/
 dist/
 build/
 
-.logQNodes/src/.samples/
+.logs
+QNodes/src/.samples/

@@ -8,10 +8,10 @@ def iniciar():
     """Punto de entrada"""
 
     # ABCD #
-    estado_inicial = "10000000000000000000"
-    condiciones =    "11111111111111111111"
-    alcance =        "11111111111111111111"
-    mecanismo =      "01111111111111111111"
+    estado_inicial = "1000000000"
+    condiciones =    "1111111111"
+    alcance =        "0101010101"
+    mecanismo =      "1101101101"
 
     gestor_redes = Manager(estado_inicial)
     mpt = gestor_redes.cargar_red()

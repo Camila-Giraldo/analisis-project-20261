@@ -273,7 +273,7 @@ class System:
             NDArray[np.float32]: Este arreglo contiene cada elemento/variable de forma ordenada y consecutiva seleccionado específicamente en la clave formada por el estado inicial.
         """
         probabilidad: float
-        distribucion = np.empty(self.indices_ncubos.size, dtype=np.float32)
+        distribucion = np.empty(self.indices_ncubos.size, dtype=np.float64)
 
         for i, ncubo in enumerate(self.ncubos):
             probabilidad = ncubo.data
