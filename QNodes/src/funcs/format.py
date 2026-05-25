@@ -44,10 +44,10 @@ def fmt_biparticion_q(
     dual: list[tuple[int, int]],
     to_sort: bool = True,
 ) -> str:
-    prim_purv, prim_mech = fmt_parte_q(prim, to_sort)
-    dual_purv, dual_mech = fmt_parte_q(dual, to_sort)
+    top_prim, bottom_prim = fmt_parte_q(prim, to_sort)
+    top_dual, bottom_dual = fmt_parte_q(dual, to_sort)
 
-    return f"| {prim_purv} || {dual_purv} |\n| {prim_mech} || {dual_mech} |\n"
+    return f"{top_prim}{top_dual}\n{bottom_prim}{bottom_dual}\n"
 
 
 def fmt_parte_q(
@@ -63,5 +63,6 @@ def fmt_parte_q(
 
     str_purv = COLON_DELIM.join(purv) if purv else VOID_STR
     str_mech = COLON_DELIM.join(mech) if mech else VOID_STR
+    width = max(len(str_purv), len(str_mech)) + 2
 
-    return str_purv, str_mech
+    return f"⎛{str_purv:^{width}}⎞", f"⎝{str_mech:^{width}}⎠"
