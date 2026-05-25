@@ -282,6 +282,8 @@ class QNodes(SIA):
 
             vertices = omegas_ciclo
 
+            self.sia_subsistema.memo.clear()
+
         return min(
             self.memoria_grupo_candidato,
             key=lambda k: self.memoria_grupo_candidato[k][indice_emd],
