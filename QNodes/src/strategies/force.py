@@ -290,7 +290,7 @@ Estado incial: {initial_state}.
         resultados = pd.DataFrame(
             columns=llave_futuro,
             index=llave_presente,
-            dtype=np.float32,
+            dtype=np.float64,
         )
 
         i, j = 1, 0
