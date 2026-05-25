@@ -1,5 +1,3 @@
-from pathlib import Path
-
 INFTY_POS: float = float("inf")
 INFTY_NEG: float = float("-inf")
 

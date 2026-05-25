@@ -60,7 +60,7 @@ class Manager:
                 datos_deterministas=False,
                 interactivo=False,
             )
-        dataset = np.loadtxt(self.tpm_filename, delimiter=COLON_DELIM, dtype=np.float32)
+        dataset = np.genfromtxt(self.tpm_filename, delimiter=COLON_DELIM)
         return dataset
 
     def generar_red(
