@@ -157,7 +157,7 @@ def ejecutar_desde_excel(
     estado_inicio: str | None = None,
     condiciones: str | None = None,
 ):
-    df = pd.read_excel(ruta_excel, sheet_name=8, usecols="B", skiprows=3, names=["Subsistema"]) #! here
+    df = pd.read_excel(ruta_excel, sheet_name=1, usecols="B", skiprows=2, names=["Subsistema"]) #! here
     filas = df["Subsistema"].dropna().tolist()
     filas = filas[inicio:inicio + cantidad]
     resultados = []
@@ -213,13 +213,13 @@ def iniciar():
     ruta_entrada = Path(
         os.getenv(
             "GEOMIP_INPUT_XLSX",
-            str(GEOMIP_ROOT / "results" / "Pruebas_Metodo2.xlsx"),
+            str(GEOMIP_ROOT / "results" / "Pruebas_iniciales_Metodo2.xlsx"),
         )
     )
     ruta_salida = Path(
         os.getenv(
             "GEOMIP_OUTPUT_XLSX",
-            str(GEOMIP_ROOT / "results" / "resultados_Geometric.xlsx"),
+            str(GEOMIP_ROOT / "results" / "resultados_Geometric_20A.xlsx"),
         )
     )
     ejecutar_desde_excel(ruta_entrada, ruta_salida)
