@@ -245,6 +245,34 @@ class System:
         )
         return new_sys
 
+    def bipartir_k(
+        self,
+        particion_k: list[tuple],
+    ) -> "System":
+        """
+        Generalización de bipartir para k>2 partes.
+
+        particion_k: lista de (alcance_i, mecanismo_i) donde alcance_i y
+        mecanismo_i son NDArray[np.int8] con índices globales de variables.
+
+        Para cada ncubo se mantienen solo las conexiones de mecanismo de su
+        parte; los inter-parte se cortan por marginalización.
+        """
+        fut_to_mec: dict[int, object] = {}
+        for alcance_i, mecanismo_i in particion_k:
+            for f in alcance_i:
+                fut_to_mec[int(f)] = mecanismo_i
+
+        new_sys = System.__new__(System)
+        new_sys.estado_inicial = self.estado_inicial
+        new_sys.ncubos = tuple(
+            cube.marginalizar(np.setdiff1d(cube.dims, fut_to_mec[int(cube.indice)]))
+            if int(cube.indice) in fut_to_mec
+            else cube.marginalizar(cube.dims)
+            for cube in self.ncubos
+        )
+        return new_sys
+
     def distribucion_marginal(self):
         """
         Partiendo de idealmente un subsistema o una bipartición como entrada, se seleccionana los nodos/elementos cuando su estado es OFF o inactivo para cada uno de ellos, mediante la propiedad de las distribuciones marginales, esto nos permite calcular más eficientemente la EMD-Effect, logrando así determinar un coste para dar comparación entre idealmente, un sub-sistema y una bipartición. Hemos de aplicar una reversión en la selección del estado inicial puesto
