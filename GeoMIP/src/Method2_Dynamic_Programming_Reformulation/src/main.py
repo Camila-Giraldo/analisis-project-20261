@@ -84,8 +84,8 @@ from pathlib import Path
 METHOD2_ROOT = Path(__file__).resolve().parents[1]
 GEOMIP_ROOT = Path(__file__).resolve().parents[3]
 
-def convertir_a_binario(texto, n_bits=20):
-    posiciones = "ABCDEFGHIJKLMNOPQRST"[:n_bits]
+def convertir_a_binario(texto, n_bits=22):
+    posiciones = "ABCDEFGHIJKLMNOPQRSTUV"[:n_bits]
     binario = ["0"] * n_bits
     for letra in texto:
         if letra in posiciones:
@@ -147,7 +147,7 @@ def ejecutar_desde_excel_generalizado(
         Iteración, Estado inicial, k, Partición, Phi, k_natural,
         k_encontrado, Tiempo de ejecución (s)
     """
-    df = pd.read_excel(ruta_excel, sheet_name=1, usecols="B", skiprows=2, names=["Subsistema"])
+    df = pd.read_excel(ruta_excel, sheet_name=2, usecols="B", skiprows=2, names=["Subsistema"])
     filas = df["Subsistema"].dropna().tolist()
     filas = filas[inicio:inicio + cantidad]
     resultados = []
@@ -247,8 +247,8 @@ def ejecutar_desde_excel(
     condiciones: str | None = None,
     k: int = 2,
 ):
-    df_header = pd.read_excel(ruta_excel, sheet_name=1, header=None, usecols="E", nrows=2)
-    df = pd.read_excel(ruta_excel, sheet_name=1, usecols="B", skiprows=2, names=["Subsistema"]) #! here
+    df_header = pd.read_excel(ruta_excel, sheet_name=4, header=None, usecols="E", nrows=2)
+    df = pd.read_excel(ruta_excel, sheet_name=4, usecols="B", skiprows=2, names=["Subsistema"]) #! here
     filas = df["Subsistema"].dropna().tolist()
     filas = filas[inicio:inicio + cantidad]
     resultados = []
@@ -314,7 +314,7 @@ def iniciar():
     ruta_salida = Path(
         os.getenv(
             "GEOMIP_OUTPUT_XLSX",
-            str(GEOMIP_ROOT / "results" / "resultados_Geometric_10A.xlsx"),
+            str(GEOMIP_ROOT / "results" / "resultados_Geometric_22A3.xlsx"),
         )
     )
 
