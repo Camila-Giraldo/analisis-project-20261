@@ -45,6 +45,7 @@ PATH_PROFILING: str = "review/profiling"
 PATH_RESOLVER: str = "review/resolver"
 
 CSV_EXTENSION: str = "csv"
+NPY_EXTENSION: str = "npy"
 HTML_EXTENSION: str = "html"
 EXCEL_EXTENSION: str = "xlsx"
 

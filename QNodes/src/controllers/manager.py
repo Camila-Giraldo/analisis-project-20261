@@ -10,6 +10,7 @@ from src.constants.base import (
     ABC_START,
     COLON_DELIM,
     CSV_EXTENSION,
+    NPY_EXTENSION,
     PATH_SAMPLES,
     PATH_RESOLVER,
 )
@@ -39,10 +40,26 @@ class Manager:
         return aplicacion.pagina_red_muestra
 
     @property
-    def tpm_filename(self) -> Path:
+    def npy_filename(self) -> Path:
+        """Ruta del binario `.npy` (formato preferido: float32 crudo, carga sin
+        parseo y con pico de memoria mínimo)."""
+        return (
+            self.ruta_base / f"N{len(self.estado_inicial)}{self.pagina}.{NPY_EXTENSION}"
+        )
+
+    @property
+    def csv_filename(self) -> Path:
+        """Ruta del CSV heredado (`%.8f` en texto); solo para compatibilidad con
+        las muestras antiguas ya generadas."""
         return (
             self.ruta_base / f"N{len(self.estado_inicial)}{self.pagina}.{CSV_EXTENSION}"
         )
+
+    @property
+    def tpm_filename(self) -> Path:
+        """TPM a usar: prioriza el binario `.npy` y recae en el CSV heredado si es
+        el único disponible."""
+        return self.npy_filename if self.npy_filename.exists() else self.csv_filename
 
     @property
     def output_dir(self) -> Path:
@@ -54,14 +71,31 @@ class Manager:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def cargar_red(self) -> np.ndarray:
-        if not self.tpm_filename.exists():
-            self.generar_red(
-                len(self.estado_inicial),
-                datos_deterministas=False,
-                interactivo=False,
+        """Carga la TPM del subsistema como ``np.ndarray`` float32.
+
+        Estrategia de carga (de más a menos eficiente):
+          1. Binario ``.npy`` si existe → ``np.load`` (sin parseo, pico de RAM
+             igual al tamaño del array; viable para N grandes).
+          2. CSV ``%.8f`` heredado si es lo único disponible → ``np.loadtxt``
+             (compatibilidad con las muestras antiguas; pico de RAM alto).
+          3. Si no hay ninguno, genera la red automáticamente (en ``.npy``) y la
+             carga.
+
+        Returns:
+            np.ndarray: TPM en representación estado-nodo, dtype float32.
+        """
+        if self.npy_filename.exists():
+            return np.load(self.npy_filename).astype(np.float32, copy=False)
+        if self.csv_filename.exists():
+            return np.loadtxt(
+                self.csv_filename, delimiter=COLON_DELIM, dtype=np.float32
             )
-        dataset = np.loadtxt(self.tpm_filename, delimiter=COLON_DELIM, dtype=np.float32)
-        return dataset
+        self.generar_red(
+            len(self.estado_inicial),
+            datos_deterministas=False,
+            interactivo=False,
+        )
+        return np.load(self.npy_filename).astype(np.float32, copy=False)
 
     def generar_red(
         self,
@@ -78,6 +112,12 @@ class Manager:
             datos_deterministas (bool, optional): Selecciona si se quiere que la red generada sea estocástica, con el valor de probabilidad como siempre, un real positivo entre 0 y 1 inclusivo. Por defecto es False.
             interactivo (bool, optional): Si es True (por defecto), preguntará antes de sobrescribir archivos existentes o si el tamaño supera 1GB. Si es False, generará o sobrescribirá automáticamente sin preguntar.
 
+        Notas:
+            La red se persiste en binario ``.npy`` (float32 crudo), no en CSV de
+            texto: el archivo ocupa exactamente ``2^n · n · 4`` bytes y se recarga
+            con ``np.load`` sin parseo ni pico de memoria. Las muestras antiguas en
+            CSV siguen siendo legibles por ``cargar_red`` (fallback).
+
         Raises:
             ValueError: Si las dimensiones son menores a 1.
 
@@ -89,9 +129,12 @@ class Manager:
         if dimensiones < 1:
             raise ValueError("Las dimensiones deben ser positivas")
 
-        # Calcular tamaño y tiempo estimado
+        # Calcular tamaño y tiempo estimado. El `.npy` guarda float32 crudo
+        # (1 byte por celda en el caso determinista int8), de modo que el tamaño
+        # real es `2^n · n · bytes_por_celda`.
         num_estados = 1 << dimensiones
-        total_size_gb = (num_estados * dimensiones) / (1024**3)
+        bytes_por_celda = 1 if datos_deterministas else 4
+        total_size_gb = (num_estados * dimensiones * bytes_por_celda) / (1024**3)
         estimated_time = total_size_gb * 2
 
         print(f"Tamaño estimado: {total_size_gb:.6f} GB")
@@ -110,19 +153,19 @@ class Manager:
         base_path.mkdir(parents=True, exist_ok=True)
 
         suffix = ABC_START
-        while (base_path / f"N{dimensiones}{suffix}.{CSV_EXTENSION}").exists():
+        while (base_path / f"N{dimensiones}{suffix}.{NPY_EXTENSION}").exists():
             if not interactivo:
                 break
             if (
                 input(
-                    f"Ya existe N{dimensiones}{suffix}.{CSV_EXTENSION}. ¿Generar nueva red? (s/n): "
+                    f"Ya existe N{dimensiones}{suffix}.{NPY_EXTENSION}. ¿Generar nueva red? (s/n): "
                 ).lower()
                 != "s"
             ):
-                return f"N{dimensiones}{suffix}.{CSV_EXTENSION}"
+                return f"N{dimensiones}{suffix}.{NPY_EXTENSION}"
             suffix = chr(ord(suffix) + 1)
 
-        filename = f"N{dimensiones}{suffix}.{CSV_EXTENSION}"
+        filename = f"N{dimensiones}{suffix}.{NPY_EXTENSION}"
         filepath = base_path / filename
 
         # Generar estados
@@ -134,19 +177,18 @@ class Manager:
                 2, size=(num_estados, dimensiones), dtype=np.int8
             )
         else:
-            states = np.random.random(size=(num_estados, dimensiones))
+            # float32 directo: mitad de RAM que float64 y coincide con el dtype
+            # con el que `cargar_red` entrega la TPM.
+            states = np.random.random(size=(num_estados, dimensiones)).astype(
+                np.float32
+            )
 
         print(f"Generación completada en {time.time() - start_time:.2f} segundos")
 
-        # Guardar archivo
+        # Guardar archivo en binario (sin formateo de texto: rápido y compacto).
         print(f"Guardando en {filepath}...")
         start_time = time.time()
-        np.savetxt(
-            filepath,
-            states,
-            delimiter=COLON_DELIM,
-            fmt="%d" if datos_deterministas else "%.8f",
-        )
+        np.save(filepath, states)
 
         file_size_gb = os.path.getsize(filepath) / (1024**3)
         print(f"Archivo guardado: {file_size_gb:.6f} GB")

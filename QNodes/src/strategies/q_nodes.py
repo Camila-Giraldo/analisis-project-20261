@@ -18,7 +18,6 @@ from src.constants.base import (
     INT_ZERO,
     TYPE_TAG,
     NET_LABEL,
-    INFTY_POS,
     LAST_IDX,
     EFFECT,
     ACTUAL,
@@ -44,16 +43,6 @@ class QNodes(SIA):
 
     Attributes:
     ----------
-        m (int):
-            Número de elementos en el conjunto de purview (vista).
-
-        n (int):
-            Número de elementos en el conjunto de mecanismos.
-
-        tiempos (tuple[np.ndarray, np.ndarray]):
-            Tupla de dos arrays que representan los tiempos para los estados
-            actual y efecto del sistema.
-
         etiquetas (list[tuple]):
             Lista de tuplas conteniendo las etiquetas para los nodos,
             con versiones en minúsculas y mayúsculas del abecedario.
@@ -103,17 +92,11 @@ class QNodes(SIA):
         gestor_perfilado.start_session(
             f"{NET_LABEL}{len(tpm[COLS_IDX])}{aplicacion.pagina_red_muestra}"
         )
-        self.m: int
-        self.n: int
-        self.tiempos: tuple[np.ndarray, np.ndarray]
         self.etiquetas = [tuple(s.lower() for s in ABECEDARY), ABECEDARY]
         self.vertices: set[tuple]
         self.clave_submodular = [], []
         self.memoria_delta = {}
         self.memoria_grupo_candidato = {}
-
-        self.indices_alcance: np.ndarray
-        self.indices_mecanismo: np.ndarray
 
         self.logger = SafeLogger(QNODES_STRAREGY_TAG)
 
@@ -134,17 +117,6 @@ class QNodes(SIA):
         # e.g. (0,0)=a (0,2)=c (0,4)=e #
         presente = tuple(
             (ACTUAL, idx_actual) for idx_actual in self.sia_subsistema.dims_ncubos
-        )
-
-        self.m = self.sia_subsistema.indices_ncubos.size
-        self.n = self.sia_subsistema.dims_ncubos.size
-
-        self.indices_alcance = self.sia_subsistema.indices_ncubos
-        self.indices_mecanismo = self.sia_subsistema.dims_ncubos
-
-        self.tiempos = (
-            np.zeros(self.n, dtype=np.int8),
-            np.zeros(self.m, dtype=np.int8),
         )
 
         vertices = list(presente + futuro)
@@ -223,9 +195,6 @@ class QNodes(SIA):
             omegas_ciclo = [vertices[0]]
             deltas_ciclo = vertices[1:]
 
-            emd_particion_candidata = INFTY_POS
-            dist_particion_candidata = None
-
             for j in range(len(deltas_ciclo) - 1):
                 # self.logger.critic(f"   {j=}")
                 emd_local = 1e5
@@ -253,19 +222,23 @@ class QNodes(SIA):
 
                         emd_local = emd_iteracion
                         indice_mip = k
-                        emd_particion_candidata = emd_delta
-                        dist_particion_candidata = dist_marginal_delta
                 # self.logger.critic(f"       [k]: {indice_mip}")
 
                 omegas_ciclo.append(deltas_ciclo[indice_mip])
                 deltas_ciclo.pop(indice_mip)
-            self.memoria_grupo_candidato[
-                tuple(
-                    deltas_ciclo[LAST_IDX]
-                    if isinstance(deltas_ciclo[LAST_IDX], list)
-                    else deltas_ciclo
-                )
-            ] = emd_particion_candidata, dist_particion_candidata
+
+            # Par pendiente de Queyranne: el último elemento que queda (t) define
+            # la partición candidata de esta fase. Su pérdida es f({t}) — la EMD
+            # de aislar ese grupo —, que se calcula explícitamente aquí.
+            # (Antes se guardaba por error f({s}) del penúltimo seleccionado, y
+            # cuando la fase no tenía iteraciones internas el valor quedaba en
+            # infinito; ambos casos quedan corregidos al evaluar el pendiente.)
+            pendiente = deltas_ciclo[LAST_IDX]
+            _, emd_pendiente, dist_pendiente = self.funcion_submodular(pendiente, [])
+            clave_pendiente = (
+                tuple(pendiente) if isinstance(pendiente, list) else (pendiente,)
+            )
+            self.memoria_grupo_candidato[clave_pendiente] = emd_pendiente, dist_pendiente
 
             par_candidato = (
                 [omegas_ciclo[LAST_IDX]]

@@ -50,6 +50,36 @@ def fmt_biparticion_q(
     return f"| {prim_purv} || {dual_purv} |\n| {prim_mech} || {dual_mech} |\n"
 
 
+def fmt_kparticion(
+    bloques: list[list[tuple[int, int]]],
+    to_sort: bool = True,
+) -> str:
+    """
+    Formatea una k-partición (k bloques) de la estrategia KQNodes.
+
+    Cada bloque se muestra como purview (alcances en mayúscula, fila superior)
+    sobre mecanismo (presentes en minúscula, fila inferior). Los bloques se
+    separan con una barra vertical.
+
+    Args:
+        bloques: lista de bloques; cada bloque es una lista de vértices (tiempo, idx).
+        to_sort: si se ordena cada bloque por índice.
+
+    Returns:
+        str: dos líneas (purviews / mecanismos) con los k bloques delimitados.
+    """
+    purviews, mecanismos = [], []
+    for bloque in bloques:
+        purv, mech = fmt_parte_q(list(bloque), to_sort)
+        purviews.append(purv)
+        mecanismos.append(mech)
+
+    sep = " | "
+    linea_purv = "| " + sep.join(purviews) + " |"
+    linea_mech = "| " + sep.join(mecanismos) + " |"
+    return f"{linea_purv}\n{linea_mech}\n"
+
+
 def fmt_parte_q(
     parte: list[tuple[int, int]], a_ordenar: bool = True
 ) -> tuple[str, str]:

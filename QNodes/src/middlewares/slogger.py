@@ -9,6 +9,11 @@ from colorama import init, Fore, Style
 
 from src.constants.base import PATH_LOGS
 
+# colorama debe inicializarse una sola vez por proceso. Hacerlo en cada
+# instancia (como antes, dentro de ColorFormatter) reenvuelve sys.stdout
+# repetidamente y, tras cientos de loggers, desborda la pila (RecursionError).
+init(autoreset=True)
+
 
 class ColorFormatter(logging.Formatter):
     """Formatter personalizado para consola con colores usando colorama."""
@@ -21,10 +26,6 @@ class ColorFormatter(logging.Formatter):
         logging.CRITICAL: Fore.MAGENTA,  # magenta
         logging.FATAL: Fore.RED + Style.BRIGHT,  # rojo brillante
     }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        init(autoreset=True)  # Inicializa colorama
 
     def format(self, record: logging.LogRecord) -> str:
         color = self.COLORS.get(record.levelno, "")
@@ -82,10 +83,13 @@ class SafeLogger:
         last_log_file = base_log_dir / f"last_{name}.log"
 
         logger = logging.getLogger(name)
+        # Si este logger ya fue configurado (mismo nombre), reutilízalo. Evita
+        # reabrir FileHandlers en cada instanciación (fuga de descriptores).
+        if logger.handlers:
+            return logger
         logger.setLevel(logging.ERROR)
         # Importante: evita la propagación a loggers padre
         logger.propagate = False
-        logger.handlers.clear()
 
         # Formatter para archivos (sin colores)
         plain_formatter = logging.Formatter(
