@@ -10,15 +10,13 @@ def main():
     aplicacion.profiler_habilitado = True
     # aplicacion.pagina_sample_network = "B"
 
-    # Generar N25A.csv si no existe
-    n25_path = Path("data/samples/N25A.csv")
-    if not n25_path.exists():
-        m = Manager(estado_inicial="1000000000000000000000000")
-        m.generar_red(dimensiones=25, datos_discretos=True)
+    # Generar N15A.csv si no existe
+    # n15_path = Path("data/samples/N15A.csv")
+    # if not n15_path.exists():
+    #     m = Manager(estado_inicial="100000000000000")
+    #     m.generar_red(dimensiones=15, datos_discretos=True)
         
 
-   # iniciar()
-
-
 if __name__ == "__main__":
+    iniciar()
     main()
