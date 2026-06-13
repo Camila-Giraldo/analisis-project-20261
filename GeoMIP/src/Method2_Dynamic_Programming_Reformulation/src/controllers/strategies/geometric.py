@@ -323,29 +323,46 @@ class GeometricSIA(SIA):
 
         return candidatos[:150]
 
-    def _evaluar_particion_k(self, grupos_locales: list) -> tuple[float, np.ndarray]:
+    def _asignar_mecanismos(self, grupos_locales: list) -> list[tuple]:
         """
-        Evalúa EMD de una k-partición.
-        grupos_locales: lista de listas con índices locales de variables futuras.
-        """
-        n_fut = len(self.sia_subsistema.indices_ncubos)
-        n_pres = len(self.sia_subsistema.dims_ncubos)
-        symmetric = (n_fut == n_pres)
+        Construye la k-partición como lista de (alc_global, mec_global).
 
-        particion_k = []
+        Mecanismo de cada grupo = variables presentes cuyo índice global
+        coincide con alguna variable futura del grupo (correspondencia natural
+        en IIT). Las variables presentes sin par —presentes en mecanismo pero
+        no en alcance— se distribuyen en round-robin empezando por el grupo
+        de mayor tamaño, garantizando que el mecanismo total cubra todas las
+        variables presentes del subsistema.
+        """
+        fut_globals = self.sia_subsistema.indices_ncubos
+        pres_set = {int(x) for x in self.sia_subsistema.dims_ncubos}
+
+        grupos: list[tuple[list[int], list[int]]] = []
+        asignadas: set[int] = set()
         for grupo in grupos_locales:
             if not grupo:
                 continue
             g_arr = np.array(sorted(grupo), dtype=np.int8)
-            alc_global = self.sia_subsistema.indices_ncubos[g_arr]
-            # Mecanismo: mismas posiciones locales si n_fut == n_pres;
-            # si no, se asigna el mecanismo completo (corte unilateral).
-            if symmetric:
-                mec_global = self.sia_subsistema.dims_ncubos[g_arr]
-            else:
-                mec_global = self.sia_subsistema.dims_ncubos
-            particion_k.append((alc_global, mec_global))
+            alc = [int(x) for x in fut_globals[g_arr]]
+            mec = sorted(pres_set & set(alc))
+            asignadas |= set(mec)
+            grupos.append((alc, mec))
 
+        # Presentes sin par → round-robin al grupo más grande primero
+        sin_asignar = sorted(pres_set - asignadas)
+        orden = sorted(range(len(grupos)), key=lambda i: -len(grupos[i][0]))
+        for j, p in enumerate(sin_asignar):
+            grupos[orden[j % len(orden)]][1].append(p)
+
+        return [
+            (np.array(sorted(alc), dtype=np.int8),
+             np.array(sorted(mec), dtype=np.int8))
+            for alc, mec in grupos
+        ]
+
+    def _evaluar_particion_k(self, grupos_locales: list) -> tuple[float, np.ndarray]:
+        """Evalúa EMD de una k-partición usando asignación correcta de mecanismos."""
+        particion_k = self._asignar_mecanismos(grupos_locales)
         dist = self.sia_subsistema.bipartir_k(particion_k).distribucion_marginal()
         emd_val = emd_efecto(dist, self.sia_dists_marginales)
         return emd_val, dist
@@ -353,29 +370,15 @@ class GeometricSIA(SIA):
     def _fmt_particion_k(self, grupos_locales: list) -> str:
         """Formatea la k-partición igual que fmt_biparte_q pero para k grupos."""
         abecedary_lower = [a.lower() for a in ABECEDARY]
-        n_fut = len(self.sia_subsistema.indices_ncubos)
-        n_pres = len(self.sia_subsistema.dims_ncubos)
-        symmetric = (n_fut == n_pres)
+        particion_k = self._asignar_mecanismos(grupos_locales)
 
         fut_parts = []
         pres_parts = []
-        for grupo in grupos_locales:
-            fut_labels = [
-                ABECEDARY[int(self.sia_subsistema.indices_ncubos[j])]
-                for j in sorted(grupo)
-                if int(self.sia_subsistema.indices_ncubos[j]) < len(ABECEDARY)
-            ]
+        for alc, mec in particion_k:
+            fut_labels = [ABECEDARY[i] for i in alc if i < len(ABECEDARY)]
+            pres_labels = [abecedary_lower[i] for i in mec if i < len(abecedary_lower)]
             fut_parts.append(",".join(fut_labels) if fut_labels else "∅")
-
-            if symmetric:
-                pres_labels = [
-                    abecedary_lower[int(self.sia_subsistema.dims_ncubos[j])]
-                    for j in sorted(grupo)
-                    if int(self.sia_subsistema.dims_ncubos[j]) < len(abecedary_lower)
-                ]
-                pres_parts.append(",".join(pres_labels) if pres_labels else "∅")
-            else:
-                pres_parts.append("∅")
+            pres_parts.append(",".join(pres_labels) if pres_labels else "∅")
 
         top = "| " + " || ".join(fut_parts) + " |"
         bot = "| " + " || ".join(pres_parts) + " |"
