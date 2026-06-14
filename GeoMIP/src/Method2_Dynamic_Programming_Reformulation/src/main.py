@@ -92,8 +92,15 @@ def convertir_a_binario(texto, n_bits=25):
             binario[posiciones.index(letra)] = "1"
     return "".join(binario)
 
-def ejecutar_con_tiempo(config_sistema, condiciones, alcance, mecanismo, resultado_queue, tpm, k=2):
+def ejecutar_con_tiempo(config_sistema, condiciones, alcance, mecanismo, resultado_queue, tpm_path, k=2):
     try:
+        # Carga con memmap: el SO gestiona qué páginas entran en RAM.
+        # Para N=25 evita los ~6,7 GB en RAM del proceso hijo.
+        tpm_path = Path(tpm_path)
+        if tpm_path.suffix == '.npy':
+            tpm = np.load(str(tpm_path), mmap_mode='r')
+        else:
+            tpm = np.genfromtxt(str(tpm_path), delimiter=',', dtype=np.float32)
         analizador_fi = GeometricSIA(config_sistema, k=k)
         sia_dos = analizador_fi.aplicar_estrategia(condiciones, alcance, mecanismo, tpm)
         resultado_queue.put({
@@ -197,6 +204,53 @@ def ejecutar_desde_excel_generalizado(
     print(f"Resultados guardados en {ruta_salida}")
 
 
+def _preparar_tpm_binaria(csv_path: Path) -> Path:
+    """
+    Convierte la TPM de CSV a numpy binario float32 (.npy) si todavía no existe.
+
+    Escribe el archivo en streaming (chunks de 100 K filas) para evitar
+    cargar el CSV completo en RAM durante la conversión. Para N=25 el CSV
+    pesa ~6,7 GB en float64; el .npy resultante pesa ~3,3 GB en float32.
+
+    En ejecuciones posteriores detecta el .npy existente y lo devuelve
+    directamente sin reconvertir.
+
+    Carga (en subprocess): np.load(path, mmap_mode='r') → memmap.
+    El SO gestiona qué páginas entran en RAM: con el truncamiento adaptativo
+    solo se acceden ~1,8 M de los 33 M estados de N=25.
+    """
+    npy_path = csv_path.with_suffix('.npy')
+    if npy_path.exists():
+        return npy_path
+
+    print(f"Convirtiendo {csv_path.name} → float32 binario (operación única, puede tardar varios minutos)...")
+
+    # Determinar dimensiones sin cargar datos
+    with open(csv_path, 'r') as f:
+        n_cols = len(f.readline().split(','))
+    with open(csv_path, 'r') as f:
+        n_rows = sum(1 for _ in f)
+
+    # Escribir .npy en streaming usando la API interna de numpy
+    import numpy.lib.format as nfmt
+    header = {
+        'shape': (n_rows, n_cols),
+        'fortran_order': False,
+        'descr': np.dtype('float32').str,
+    }
+    procesadas = 0
+    with open(npy_path, 'wb') as f_out:
+        nfmt.write_array_header_1_0(f_out, header)
+        for chunk in pd.read_csv(str(csv_path), header=None, chunksize=100_000, dtype=np.float32):
+            chunk.values.tofile(f_out)
+            procesadas += len(chunk)
+            print(f"  {procesadas:,}/{n_rows:,} filas convertidas...", end='\r')
+
+    size_mb = npy_path.stat().st_size / 1024 / 1024
+    print(f"\nGuardado {npy_path.name} ({size_mb:.0f} MB). Próximas ejecuciones usarán memmap.")
+    return npy_path
+
+
 def resolver_tpm_path(estado_inicio: str) -> Path:
     """Find TPM file in common project locations based on state size."""
     sample_name = f"N{len(estado_inicio)}A.csv"
@@ -247,8 +301,8 @@ def ejecutar_desde_excel(
     condiciones: str | None = None,
     k: int = 2,
 ):
-    df_header = pd.read_excel(ruta_excel, sheet_name=5, header=None, usecols="E", nrows=2, dtype=str)
-    df = pd.read_excel(ruta_excel, sheet_name=5, usecols="B", skiprows=2, names=["Subsistema"]) #! here
+    df_header = pd.read_excel(ruta_excel, sheet_name=1, header=None, usecols="E", nrows=2, dtype=str)
+    df = pd.read_excel(ruta_excel, sheet_name=1, usecols="B", skiprows=2, names=["Subsistema"]) #! here
     filas = df["Subsistema"].dropna().tolist()
     filas = filas[inicio:inicio + cantidad]
     resultados = []
@@ -270,8 +324,11 @@ def ejecutar_desde_excel(
     print(f"Estado inicial leído desde Excel (E2): {estado_inicio_excel}")
     estado_inicio = estado_inicio or estado_inicio_excel or inferir_estado_inicial()
     condiciones = condiciones or ("1" * len(estado_inicio))
-    tpm_path = resolver_tpm_path(estado_inicio)
-    tpm = np.genfromtxt(tpm_path, delimiter=",")
+    # Convertir CSV a .npy float32 si no existe (operación única).
+    # El proceso principal nunca carga el contenido de la TPM en RAM;
+    # solo pasa la ruta al subprocess, que la abre con memmap.
+    csv_path = resolver_tpm_path(estado_inicio)
+    tpm_path = _preparar_tpm_binaria(csv_path)
 
     for i, fila in enumerate(filas, start=inicio + 1):
         partes = fila.split("|")
@@ -285,7 +342,7 @@ def ejecutar_desde_excel(
         config_sistema = Manager(estado_inicial=estado_inicio)
 
         resultado_queue = multiprocessing.Queue()
-        proceso = multiprocessing.Process(target=ejecutar_con_tiempo, args=(config_sistema, condiciones, alcance, mecanismo, resultado_queue, tpm, k))
+        proceso = multiprocessing.Process(target=ejecutar_con_tiempo, args=(config_sistema, condiciones, alcance, mecanismo, resultado_queue, tpm_path, k))
         
         proceso.start()
         proceso.join(timeout=3600)  
@@ -326,7 +383,7 @@ def iniciar():
     ruta_salida = Path(
         os.getenv(
             "GEOMIP_OUTPUT_XLSX",
-            str(GEOMIP_ROOT / "results/k3" / "resultados_Geometric_25A3.xlsx"),
+            str(GEOMIP_ROOT / "results/k3" / "resultados_Geometric_10A3.xlsx"),
         )
     )
 
