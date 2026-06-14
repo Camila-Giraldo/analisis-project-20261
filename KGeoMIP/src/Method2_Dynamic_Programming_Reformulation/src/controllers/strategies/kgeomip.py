@@ -24,7 +24,7 @@ from typing import List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
-class GeometricSIA(SIA):
+class KGeoMIP(SIA):
     def __init__(self, gestor: Manager, k: int = 2):
         super().__init__(gestor)
         profiler_manager.start_session(

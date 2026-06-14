@@ -138,3 +138,7 @@ class GeometricSIAGeneralizada(SIA):
                     cambio = True
                     break
         return [p for p in particion if p]
+
+
+# Alias oficial: convenio de nomenclatura K-QGMIP
+KQNodes = GeometricSIAGeneralizada
