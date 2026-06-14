@@ -316,18 +316,23 @@ class GeometricSIA(SIA):
             if f_mejor:
                 candidatos.append((p_mejor, f_mejor))
 
-        # Paralelización 2 — evaluación concurrente de candidatos k=2.
+        # Evaluación exacta de todos los candidatos con EMD real.
         #
-        # Cada llamada a bipartir+distribucion_marginal+emd_efecto es
-        # independiente: bipartir crea un nuevo objeto System (sin mutar
-        # sia_subsistema), y emd_efecto solo lee sia_dists_marginales.
-        # ThreadPoolExecutor aprovecha el tiempo de numpy fuera del GIL.
-        # Para n pequeño (pocos candidatos) el umbral evita overhead.
-        _n_workers = min(len(candidatos), os.cpu_count() or 4)
+        # Se evalúan todos los candidatos generados (no se filtra por proxy
+        # ni por importance sampling) para garantizar que la bipartición k=2
+        # encontrada sea la de menor pérdida real. Esto mejora la calidad
+        # del resultado en k>2 al partir de la mejor base posible.
+        n_vars = len(self.sia_subsistema.indices_ncubos)
+        top_candidatos = [(p, f) for p, f in candidatos if f]
+
+        # Evaluación concurrente con ThreadPoolExecutor.
+        #
+        # Paralelización 2: evaluación concurrente con ThreadPoolExecutor.
+        # bipartir crea un nuevo System (sin mutar sia_subsistema) y
+        # emd_efecto solo lee sia_dists_marginales → thread-safe.
+        _n_workers = min(len(top_candidatos), os.cpu_count() or 4)
 
         def _eval(presentes_local, futuros_local):
-            if not futuros_local:
-                return None
             p_g = self.sia_subsistema.dims_ncubos[
                 np.array(presentes_local, dtype=np.int8)
             ]
@@ -341,7 +346,7 @@ class GeometricSIA(SIA):
 
         with ThreadPoolExecutor(max_workers=_n_workers) as pool:
             futuros_exec = [
-                pool.submit(_eval, p, f) for p, f in candidatos
+                pool.submit(_eval, p, f) for p, f in top_candidatos
             ]
             for fut in as_completed(futuros_exec):
                 res = fut.result()
@@ -405,10 +410,15 @@ class GeometricSIA(SIA):
 
     def _split_mejor_grupo(self, grupos: list[list[int]]) -> list[list[int]]:
         """
-        Divide el grupo con más variables en dos usando puntos de corte
-        basados en el vector de costos de la tabla. Evalúa hasta 5 cortes
-        candidatos con EMD real y selecciona el de menor pérdida.
+        Divide el grupo con más variables en dos evaluando todos los n-1 cortes.
+
+        Para n_vars < 25 usa EMD exacto (bipartir_k) en cada corte.
+        Para n_vars >= 25 usa el proxy geométrico O(n) para evitar el coste
+        de bipartir_k sobre la tabla completa de N=25.
         """
+        n_vars = len(self.sia_subsistema.indices_ncubos)
+        use_exact = n_vars < 25
+
         idx_mayor = max(range(len(grupos)), key=lambda i: len(grupos[i]))
         grupo = grupos[idx_mayor]
 
@@ -418,65 +428,43 @@ class GeometricSIA(SIA):
         costos_full = self._get_costos_finales()
         costos_sub = costos_full[np.array(grupo)]
         orden_local = np.argsort(costos_sub)
-
-        # Punto de corte natural: mayor gap de costo dentro del subgrupo
-        costos_ord = costos_sub[orden_local]
-        gaps = np.diff(costos_ord)
-        corte_natural = int(np.argmax(gaps)) + 1 if len(gaps) > 0 else len(grupo) // 2
-        corte_natural = max(1, min(corte_natural, len(grupo) - 1))
-
-        # Explorar vecindario ±2 del corte natural (máx 5 candidatos)
-        cortes = sorted(set(
-            max(1, min(len(grupo) - 1, corte_natural + d))
-            for d in range(-2, 3)
-        ))
-
-        # Paralelización 3 — evaluación concurrente de cortes candidatos.
-        #
-        # Los ≤5 cortes son completamente independientes entre sí.
-        # _evaluar_particion_k crea objetos nuevos (bipartir_k) y no
-        # muta estado compartido, por lo que es thread-safe.
         resto = [g for i, g in enumerate(grupos) if i != idx_mayor]
 
-        def _eval_corte(corte):
-            parte1 = [grupo[orden_local[i]] for i in range(corte)]
-            parte2 = [grupo[orden_local[i]] for i in range(corte, len(grupo))]
-            if not parte1 or not parte2:
-                return None
-            candidato = resto + [parte1, parte2]
-            try:
-                emd_val, _ = self._evaluar_particion_k(candidato)
-                return emd_val, candidato
-            except Exception:
-                return None
-
-        mejor_emd = float("inf")
+        mejor_score = float("inf")
         mejor_grupos: Optional[list] = None
 
-        with ThreadPoolExecutor(max_workers=len(cortes)) as pool:
-            futuros_exec = {pool.submit(_eval_corte, c): c for c in cortes}
-            for fut in as_completed(futuros_exec):
-                res = fut.result()
-                if res is not None:
-                    emd_val, candidato = res
-                    if emd_val < mejor_emd:
-                        mejor_emd = emd_val
-                        mejor_grupos = candidato
+        for corte in range(1, len(grupo)):
+            parte1 = [grupo[orden_local[i]] for i in range(corte)]
+            parte2 = [grupo[orden_local[i]] for i in range(corte, len(grupo))]
+            candidato = resto + [parte1, parte2]
+            if use_exact:
+                score, _ = self._evaluar_particion_k(candidato)
+            else:
+                score = self._score_proxy(candidato)
+            if score < mejor_score:
+                mejor_score = score
+                mejor_grupos = candidato
 
         return mejor_grupos if mejor_grupos is not None else grupos
 
     def _hill_climbing(self, grupos: list[list[int]]) -> list[list[int]]:
         """
-        Refinamiento local: reasigna una variable a la vez al grupo que
-        más reduzca la pérdida EMD. Itera hasta convergencia.
+        Refinamiento local de la k-partición por first-improvement.
 
-        Complejidad por iteración: O(n × k × eval_bipartir_k).
-        En la práctica converge en pocos pasos porque el greedy jerárquico
-        ya produce una solución cercana al óptimo local.
+        Para n_vars < 25 evalúa cada movimiento con EMD exacto (bipartir_k),
+        recuperando la calidad del algoritmo original.
+        Para n_vars >= 25 usa el proxy geométrico O(n) para mantener
+        la viabilidad en subsistemas grandes.
         """
-        mejor_emd, _ = self._evaluar_particion_k(grupos)
-        mejoro = True
+        n_vars = len(self.sia_subsistema.indices_ncubos)
+        use_exact = n_vars < 25
 
+        if use_exact:
+            mejor_score, _ = self._evaluar_particion_k(grupos)
+        else:
+            mejor_score = self._score_proxy(grupos)
+
+        mejoro = True
         while mejoro:
             mejoro = False
             for i in range(len(grupos)):
@@ -489,12 +477,12 @@ class GeometricSIA(SIA):
                         nueva = [list(g) for g in grupos]
                         nueva[i].remove(var)
                         nueva[j].append(var)
-                        try:
-                            emd_nuevo, _ = self._evaluar_particion_k(nueva)
-                        except Exception:
-                            continue
-                        if emd_nuevo < mejor_emd - 1e-9:
-                            mejor_emd = emd_nuevo
+                        if use_exact:
+                            score, _ = self._evaluar_particion_k(nueva)
+                        else:
+                            score = self._score_proxy(nueva)
+                        if score < mejor_score - 1e-9:
+                            mejor_score = score
                             grupos = nueva
                             mejoro = True
                             break
@@ -550,6 +538,32 @@ class GeometricSIA(SIA):
         emd_val = emd_efecto(dist, self.sia_dists_marginales)
         return emd_val, dist
 
+    def _score_proxy(self, grupos_locales: list) -> float:
+        """
+        Proxy O(n) para el EMD de una k-partición.
+
+        Para k=2 coincide exactamente con _score() de _find_mip_k2.
+        Para k>2 generaliza el principio: el grupo de mayor cohesión
+        (suma de costos_finales) es el "sistema de referencia"; el score
+        es la suma de costos de todo lo que queda fuera de ese grupo,
+        es decir, el costo total de las variables cortadas.
+
+            score = Σ_i costos[i]  -  max_g(Σ_{i∈g} costos[i])
+
+        Costo: O(n_vars). No llama a bipartir_k ni a distribucion_marginal.
+        Usado en _split_mejor_grupo y _hill_climbing para eliminar las
+        llamadas exactas durante la búsqueda; solo queda 1 llamada exacta
+        al final de _find_mip_kn.
+        """
+        costos = self._get_costos_finales()
+        group_sums = [
+            float(costos[np.array(g, dtype=np.int64)].sum()) if g else 0.0
+            for g in grupos_locales
+        ]
+        if not group_sums:
+            return float("inf")
+        return float(sum(group_sums)) - max(group_sums)
+
     def _fmt_particion_k(self, grupos_locales: list) -> str:
         """Formatea la k-partición igual que fmt_biparte_q pero para k grupos."""
         abecedary_lower = [a.lower() for a in ABECEDARY]
@@ -566,6 +580,146 @@ class GeometricSIA(SIA):
         top = "| " + " || ".join(fut_parts) + " |"
         bot = "| " + " || ".join(pres_parts) + " |"
         return top + "\n" + bot
+
+    # ------------------------------------------------------------------
+    # Heurística IS — Importance sampling para pre-filtrado EMD
+    # ------------------------------------------------------------------
+
+    def _compute_marginal_probs(self, futuros_local: list) -> np.ndarray:
+        """
+        Aproxima la probabilidad marginalizada de cada variable futura bajo
+        la bipartición (G1=futuros_local, G2=resto), usando el modelo
+        de Bernoulli independiente.
+
+        Para cada variable i ∈ G1: q_i = promedio de ncubo_data[i] sobre los
+        2^|M2| estados donde el mecanismo de G2 varía (fijando M1 = i0_M1).
+        Para i ∈ G2: ídem con roles invertidos.
+
+        Si |free_bits| > MAX_FREE_BITS se usa q_i ≈ ncubo_data[i][i0_int]
+        sin marginalizar (evita iteraciones de 2^n).
+
+        Costo: O(n_vars × 2^(n//2)) para bipartición balanceada.
+        """
+        MAX_FREE_BITS = 15
+        n_vars = len(self.sia_subsistema.indices_ncubos)
+        g1_set = set(futuros_local)
+        g2_local = [i for i in range(n_vars) if i not in g1_set]
+
+        if not futuros_local or not g2_local:
+            return np.array(
+                [float(self._ncubo_data[i][self._i0_int]) for i in range(n_vars)],
+                dtype=np.float32,
+            )
+
+        particion_k = self._asignar_mecanismos([futuros_local, g2_local])
+        dims = self.sia_subsistema.dims_ncubos
+
+        def _global_to_local(mec_arr) -> list:
+            bits = []
+            for g in mec_arr:
+                pos = np.where(dims == int(g))[0]
+                if len(pos) > 0:
+                    bits.append(int(pos[0]))
+            return bits
+
+        mec_bits = [_global_to_local(mec) for _, mec in particion_k]
+        # G1 marginaliza sobre el mecanismo de G2 (free_bits[0] = mec_bits[1])
+        free_bits = [mec_bits[1], mec_bits[0]]
+
+        q = np.zeros(n_vars, dtype=np.float32)
+
+        for gi, fut_locals in enumerate([futuros_local, g2_local]):
+            fb = free_bits[gi]
+            n_free = len(fb)
+
+            if n_free == 0 or n_free > MAX_FREE_BITS:
+                # Sin marginalización o demasiados bits libres: usar valor directo
+                for var_idx in fut_locals:
+                    q[var_idx] = float(self._ncubo_data[var_idx][self._i0_int])
+                continue
+
+            n_combos = 1 << n_free
+            base = self._i0_int
+            for bit in fb:
+                base &= ~(1 << bit)
+
+            k_range = np.arange(n_combos, dtype=np.int64)
+            offsets = np.zeros(n_combos, dtype=np.int64)
+            for k_idx, bit in enumerate(fb):
+                offsets |= ((k_range >> k_idx) & 1) << bit
+            states = base + offsets   # shape (n_combos,)
+
+            for var_idx in fut_locals:
+                q[var_idx] = float(np.mean(self._ncubo_data[var_idx][states]))
+
+        return q
+
+    def _emd_aproximado(self, futuros_local: list, n_samples: int = 2000) -> float:
+        """
+        Estima el EMD de una bipartición sin llamar a bipartir+distribucion_marginal.
+
+        Usa la aproximación de producto de Bernoulli independiente:
+            u_approx(x) = Π_i q_i^{x_i} × (1-q_i)^{1-x_i}
+
+        donde q_i es la probabilidad marginalizada de la variable i bajo la
+        bipartición. El EMD se estima muestreando desde los estados ya
+        almacenados en tabla_np (región de alta probabilidad cerca de i0),
+        evitando recorrer los 2^n estados completos.
+
+        Costo total: O(n_vars × 2^(n//2)) para marginalizar +
+                     O(n_samples × n_vars) para evaluar → << O(2^n_vars).
+
+        Solo se aplica cuando dim(presente) == dim(futuro) (caso típico),
+        ya que ambos espacios deben tener el mismo tamaño de índice.
+        """
+        n_vars = len(self.sia_subsistema.indices_ncubos)
+        n_dims = len(self.sia_subsistema.dims_ncubos)
+
+        # Requiere que el espacio de índices presente y futuro coincidan
+        if n_dims != n_vars:
+            return float("inf")
+
+        try:
+            q = self._compute_marginal_probs(futuros_local)
+        except Exception:
+            return float("inf")
+
+        # Muestrear desde tabla_np (estados visitados durante DP)
+        table_keys = np.array(list(self.tabla_np.keys()), dtype=np.int64)
+        if len(table_keys) == 0:
+            return float("inf")
+
+        if len(table_keys) > n_samples:
+            sel = np.random.choice(len(table_keys), size=n_samples, replace=False)
+            sampled = table_keys[sel]
+        else:
+            sampled = table_keys
+
+        n_sampled = len(sampled)
+        bits_pos = np.arange(n_vars, dtype=np.int64)
+
+        # Bits de cada estado muestreado: shape (n_sampled, n_vars)
+        bits = ((sampled[:, None] >> bits_pos[None, :]) & 1).astype(np.float32)
+
+        # u_approx = exp(Σ_i [x_i·log(q_i) + (1-x_i)·log(1-q_i)])
+        # Convertir a float64 ANTES de clipar: en float32, (1.0 - 1e-30) = 1.0
+        # exactamente (solo 7 dígitos), lo que haría log(1-1.0)=log(0)→-inf.
+        # float64 epsilon ≈ 2.22e-16: bounds menores que eso son inrepresentables
+        # y 1.0 - 1e-30 == 1.0 en float64, causando log(0). Usar 1e-15 es seguro.
+        q_cl = np.clip(q.astype(np.float64), 1e-15, 1.0 - 1e-15)
+        log_u = (bits * np.log(q_cl) + (1.0 - bits) * np.log(1.0 - q_cl)).sum(axis=1)
+        u_s = np.exp(log_u)
+
+        # v en los estados muestreados
+        v = np.asarray(self.sia_dists_marginales, dtype=np.float64)
+        max_idx = int(sampled.max())
+        if max_idx >= len(v):
+            return float("inf")
+        v_s = v[sampled]
+
+        # Estimación escalada al espacio completo
+        n_states = len(v)
+        return float(np.sum(np.abs(u_s - v_s))) * n_states / n_sampled
 
     def hamming(self, a: List[int], b: List[int]) -> int:
         return sum(x != y for x, y in zip(a, b))
