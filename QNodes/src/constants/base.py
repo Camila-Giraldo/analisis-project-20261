@@ -1,5 +1,8 @@
 from pathlib import Path
 
+# Ruta absoluta anclada al directorio src/, independiente del cwd al ejecutar.
+_SRC_DIR: Path = Path(__file__).parent.parent
+
 INFTY_POS: float = float("inf")
 INFTY_NEG: float = float("-inf")
 
@@ -40,7 +43,7 @@ ACTIVE, INACTIVE = True, False
 
 NET_LABEL: str = "NET"
 PATH_LOGS: str = ".logs"
-PATH_SAMPLES: str = "src/.samples/"
+PATH_SAMPLES: Path = _SRC_DIR / ".samples"
 PATH_PROFILING: str = "review/profiling"
 PATH_RESOLVER: str = "review/resolver"
 

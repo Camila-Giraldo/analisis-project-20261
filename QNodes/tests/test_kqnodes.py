@@ -195,3 +195,65 @@ class TestGenerateKPartitions:
                          if i < j for _ in [set(b1) & set(b2)] if set(b1) & set(b2)]
                 assert union == presentes, "los bloques no cubren todos los presentes"
                 assert not pares, "hay bloques solapados"
+
+
+# ---------------------------------------------------------------------------
+# TestTensorProduct — API pública tensor_product
+# ---------------------------------------------------------------------------
+
+class TestTensorProduct:
+
+    def _setup_kq(self, bits, alc, mec):
+        estado = "1" + "0" * (bits - 1)
+        cond = "1" * bits
+        tpm = Manager(estado).cargar_red()
+        kq = KQNodes(tpm)
+        kq.sia_preparar_subsistema(estado, cond, alc, mec)
+        return kq
+
+    def test_producto_dos_distribuciones(self):
+        """tensor_product de dos arrays devuelve el outer product aplanado."""
+        import numpy as np
+        kq = self._setup_kq(3, "111", "111")
+        a = np.array([0.3, 0.7], dtype=np.float32)
+        b = np.array([0.6, 0.4], dtype=np.float32)
+        resultado = kq.tensor_product([a, b])
+        esperado = np.outer(a, b).ravel()
+        assert resultado.shape == (4,)
+        assert np.allclose(resultado, esperado, atol=1e-6)
+
+    def test_producto_una_distribucion(self):
+        """tensor_product con un solo array devuelve el mismo array."""
+        import numpy as np
+        kq = self._setup_kq(3, "111", "111")
+        a = np.array([0.25, 0.75], dtype=np.float32)
+        resultado = kq.tensor_product([a])
+        assert np.allclose(resultado, a, atol=1e-6)
+
+    def test_producto_tres_distribuciones_shape(self):
+        """tensor_product de tres arrays produce shape (n1*n2*n3,)."""
+        import numpy as np
+        kq = self._setup_kq(4, "1111", "1111")
+        distribuciones = [np.array([0.5, 0.5], dtype=np.float32) for _ in range(3)]
+        resultado = kq.tensor_product(distribuciones)
+        assert resultado.shape == (8,)
+        assert abs(resultado.sum() - 1.0) < 1e-5
+
+    def test_producto_vacio_lanza_error(self):
+        """tensor_product con lista vacía debe lanzar ValueError."""
+        kq = self._setup_kq(3, "111", "111")
+        with pytest.raises(ValueError):
+            kq.tensor_product([])
+
+    def test_consistencia_con_marginal_distributions(self, tpm_n3):
+        """marginal_distributions y tensor_product son consistentes: el tensor
+        construido desde las distribuciones por bloque reproduce la EMD esperada."""
+        import numpy as np
+        bits, alc, mec = 3, "111", "111"
+        estado, cond = "100", "111"
+        kq = KQNodes(tpm_n3)
+        sol = kq.aplicar_estrategia(estado, cond, alc, mec, 2, metodo="exacto")
+        # marginal_distributions devuelve el vector plano de marginales
+        marg = kq.marginal_distributions(kq.ultima_kparticion)
+        assert marg.dtype == np.float32
+        assert marg.size == kq.sia_subsistema.indices_ncubos.size

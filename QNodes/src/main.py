@@ -8,11 +8,10 @@ from src.strategies.KQNodes import KQNodes
 def iniciar():
     """Punto de entrada QNodes (bipartición)."""
 
-    # N22 #
-    estado_inicial = "1" + "0" * 21
-    condiciones =    "1" * 22
-    alcance =        "1111111111111111111111"
-    mecanismo =      "1111111111111111111111"
+    estado_inicial = "1000000000"
+    condiciones =    "1111111111"
+    alcance =        "1111111111"
+    mecanismo =      "1111111111"
 
     gestor_redes = Manager(estado_inicial)
     mpt = gestor_redes.cargar_red()
@@ -36,10 +35,10 @@ def iniciar_kqnodes(k: int = 3, metodo: str = "auto", guardar_viz: str = ""):
         guardar_viz (str): ruta PNG donde guardar la visualización del hipercubo;
             si está vacío no se genera la imagen.
     """
-    estado    = "1" + "0" * 24   # N25
-    cond      = "1" * 25
-    alcance   = "1" * 25
-    mecanismo = "1" * 25
+    estado    = "1000000000"   
+    cond      = "1111111111"
+    alcance   = "1111111111"
+    mecanismo = "1111111111"
 
     mpt = Manager(estado).cargar_red()
     analizador = KQNodes(mpt)

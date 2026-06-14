@@ -15,10 +15,11 @@ import os
 import logging
 from controllers.manager import Manager
 from strategies.q_nodes import QNodes
+from strategies.KQNodes import KQNodes
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
-MAX_VERTICES_DEFAULT = 37
+MAX_VERTICES_DEFAULT = 10_000
 
 
 def _contar_unos(s: str) -> int:
@@ -37,7 +38,26 @@ def _parsear_rango_filas(raw: str) -> set[int]:
     return filas
 
 
-def run_tests(file_in, file_out_csv, max_vertices=MAX_VERTICES_DEFAULT, solo_filas=None):
+def run_tests(
+    file_in,
+    file_out_csv,
+    max_vertices=MAX_VERTICES_DEFAULT,
+    solo_filas=None,
+    estrategia: str = "qnodes",
+    k: int = 3,
+    metodo: str = "auto",
+):
+    """Ejecuta todas las pruebas del Excel contra QNodes o KQNodes.
+
+    Args:
+        file_in: ruta al .xlsx de entrada.
+        file_out_csv: ruta del CSV de salida.
+        max_vertices: límite m+n por prueba (filas con más vértices se saltan).
+        solo_filas: conjunto de números de fila a ejecutar; None = todas.
+        estrategia: "qnodes" (bipartición) o "kqnodes" (k-partición).
+        k: número de bloques para KQNodes (ignorado si estrategia="qnodes").
+        metodo: "auto" | "exacto" | "voraz" | "recocido" (solo KQNodes).
+    """
     basename = os.path.basename(file_in)
     bits_str = ''.join(c for c in basename if c.isdigit())
     bits = int(bits_str)
@@ -63,13 +83,18 @@ def run_tests(file_in, file_out_csv, max_vertices=MAX_VERTICES_DEFAULT, solo_fil
     gestor_redes = Manager(ESTADO_INICIAL)
     mpt = gestor_redes.cargar_red()
 
-    columnas_csv = ["Prueba", col_alcance, col_mecanismo, "Partición", "Pérdida", "Tiempo"]
+    usar_kqnodes = estrategia == "kqnodes"
+
+    if usar_kqnodes:
+        columnas_csv = ["Prueba", col_alcance, col_mecanismo, "k", "Método", "Partición", "Pérdida", "Tiempo"]
+    else:
+        columnas_csv = ["Prueba", col_alcance, col_mecanismo, "Partición", "Pérdida", "Tiempo"]
 
     total = len(df)
     ejecutadas = 0
     saltadas = 0
 
-    with open(file_out_csv, "w", newline="") as f:
+    with open(file_out_csv, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(columnas_csv)
         f.flush()
@@ -86,7 +111,11 @@ def run_tests(file_in, file_out_csv, max_vertices=MAX_VERTICES_DEFAULT, solo_fil
             # Validación de longitudes
             esperado = len(ESTADO_INICIAL)
             if not all(len(x) == esperado for x in [ESTADO_INICIAL, CONDICIONES, alcance, mecanismo]):
-                writer.writerow([num_fila, alcance, mecanismo, "ERROR_LONGITUD", "ERROR_LONGITUD", "ERROR_LONGITUD"])
+                fila_error = [num_fila, alcance, mecanismo]
+                if usar_kqnodes:
+                    fila_error += [k, metodo]
+                fila_error += ["ERROR_LONGITUD", "ERROR_LONGITUD", "ERROR_LONGITUD"]
+                writer.writerow(fila_error)
                 f.flush()
                 logging.error(f"Fila {num_fila} ignorada por longitud incorrecta")
                 continue
@@ -95,22 +124,46 @@ def run_tests(file_in, file_out_csv, max_vertices=MAX_VERTICES_DEFAULT, solo_fil
             m = _contar_unos(alcance)
             n = _contar_unos(mecanismo)
             if (m + n) > max_vertices:
-                writer.writerow([num_fila, alcance, mecanismo, "SALTADO", f"vértices={m+n}>{max_vertices}", ""])
+                fila_saltada = [num_fila, alcance, mecanismo]
+                if usar_kqnodes:
+                    fila_saltada += [k, metodo]
+                fila_saltada += ["SALTADO", f"vértices={m+n}>{max_vertices}", ""]
+                writer.writerow(fila_saltada)
                 f.flush()
                 saltadas += 1
                 logging.warning(f"Fila {num_fila} saltada: m={m}, n={n}, vértices={m+n} > max_vertices={max_vertices}")
                 continue
 
             # Ejecución
+            metodo_usado = metodo
             try:
-                analizador = QNodes(mpt)
                 t0 = time.time()
-                solution = analizador.aplicar_estrategia(
-                    ESTADO_INICIAL,
-                    CONDICIONES,
-                    alcance,
-                    mecanismo,
-                )
+                if usar_kqnodes:
+                    analizador = KQNodes(mpt)
+                    solution = analizador.aplicar_estrategia(
+                        ESTADO_INICIAL,
+                        CONDICIONES,
+                        alcance,
+                        mecanismo,
+                        k,
+                        metodo=metodo,
+                    )
+                    # El método real usado puede diferir de "auto"
+                    estrategia_label = getattr(solution, "estrategia", f"KQNodes k={k}")
+                    if "exacto" in estrategia_label:
+                        metodo_usado = "exacto"
+                    elif "voraz" in estrategia_label:
+                        metodo_usado = "voraz"
+                    elif "recocido" in estrategia_label:
+                        metodo_usado = "recocido"
+                else:
+                    analizador = QNodes(mpt)
+                    solution = analizador.aplicar_estrategia(
+                        ESTADO_INICIAL,
+                        CONDICIONES,
+                        alcance,
+                        mecanismo,
+                    )
                 dt = time.time() - t0
 
                 particion = getattr(solution, "particion", "ERROR")
@@ -118,18 +171,24 @@ def run_tests(file_in, file_out_csv, max_vertices=MAX_VERTICES_DEFAULT, solo_fil
                 tiempo = getattr(solution, "tiempo_total", dt)
 
                 ejecutadas += 1
-                logging.info(f"Fila {num_fila} OK — pérdida={perdida} — {dt:.1f}s")
+                logging.info(f"Fila {num_fila} OK — pérdida={perdida:.6f} — {dt:.1f}s")
 
                 del analizador
                 gc.collect()
             except Exception as e:
                 particion, perdida, tiempo = "ERROR", "ERROR", "ERROR"
-                logging.error(f"Error fila {num_fila} (alcance={alcance}, mecanismo={mecanismo}): {str(e)}")
+                logging.error(f"Error fila {num_fila} (alcance={alcance}, mecanismo={mecanismo}): {e}")
 
-            writer.writerow([num_fila, alcance, mecanismo, particion, perdida, tiempo])
+            fila_resultado = [num_fila, alcance, mecanismo]
+            if usar_kqnodes:
+                fila_resultado += [k, metodo_usado]
+            fila_resultado += [particion, perdida, tiempo]
+            writer.writerow(fila_resultado)
             f.flush()
 
-    logging.info(f"Completado: {ejecutadas} ejecutadas, {saltadas} saltadas, {total} totales en {file_out_csv}")
+    logging.info(
+        f"Completado: {ejecutadas} ejecutadas, {saltadas} saltadas, {total} totales → {file_out_csv}"
+    )
 
 
 def main():
@@ -137,12 +196,40 @@ def main():
     carpeta_input = os.path.join(script_dir, "input")
     carpeta_output = os.path.join(script_dir, "output")
 
-    parser = argparse.ArgumentParser(description="Ejecuta pruebas de redes QNodes desde archivos Excel")
-    parser.add_argument("file", nargs="?", help="Archivo a procesar (ej: 25A o N25A.xlsx)")
-    parser.add_argument("--max-vertices", type=int, default=MAX_VERTICES_DEFAULT,
-                        help=f"Máximo de vértices (m+n) por prueba (default: {MAX_VERTICES_DEFAULT})")
-    parser.add_argument("--rows", type=str, default=None,
-                        help="Filas específicas a ejecutar, ej: '7,13-21,33-49'")
+    parser = argparse.ArgumentParser(
+        description="Ejecuta pruebas de redes desde archivos Excel usando QNodes o KQNodes."
+    )
+    parser.add_argument("file", nargs="?", help="Archivo a procesar (ej: 10A o N10A.xlsx)")
+    parser.add_argument(
+        "--estrategia",
+        choices=["qnodes", "kqnodes"],
+        default="qnodes",
+        help="Estrategia a usar (default: qnodes).",
+    )
+    parser.add_argument(
+        "--k",
+        type=int,
+        default=3,
+        help="Número de bloques para KQNodes (default: 3, ignorado en qnodes).",
+    )
+    parser.add_argument(
+        "--metodo",
+        choices=["auto", "exacto", "voraz", "recocido"],
+        default="auto",
+        help="Método de búsqueda para KQNodes (default: auto).",
+    )
+    parser.add_argument(
+        "--max-vertices",
+        type=int,
+        default=MAX_VERTICES_DEFAULT,
+        help=f"Máximo de vértices (m+n) por prueba (default: {MAX_VERTICES_DEFAULT}).",
+    )
+    parser.add_argument(
+        "--rows",
+        type=str,
+        default=None,
+        help="Filas específicas a ejecutar, ej: '7,13-21,33-49'.",
+    )
 
     args = parser.parse_args()
 
@@ -150,9 +237,7 @@ def main():
         logging.error(f"Directorio de entrada no encontrado: {carpeta_input}")
         return
 
-    if not os.path.exists(carpeta_output):
-        logging.warning(f"Creando directorio de salida: {carpeta_output}")
-        os.makedirs(carpeta_output, exist_ok=True)
+    os.makedirs(carpeta_output, exist_ok=True)
 
     archivos = os.listdir(carpeta_input)
     if args.file:
@@ -169,15 +254,36 @@ def main():
     solo_filas = _parsear_rango_filas(args.rows) if args.rows else None
 
     for file in archivos:
-        if file.startswith("N") and file.endswith(".xlsx"):
-            base = file[1:-5]
-            file_in = os.path.join(carpeta_input, file)
+        if not (file.startswith("N") and file.endswith(".xlsx")):
+            continue
+
+        base = file[1:-5]
+        file_in = os.path.join(carpeta_input, file)
+
+        if args.estrategia == "kqnodes":
+            sufijo = f"_k{args.k}_{args.metodo}"
+            file_out_csv = os.path.join(carpeta_output, f"K{base}{sufijo}.csv")
+        else:
             file_out_csv = os.path.join(carpeta_output, f"S{base}.csv")
-            logging.info(f"Procesando {file_in} → {file_out_csv}  (max_vertices={args.max_vertices})")
-            try:
-                run_tests(file_in, file_out_csv, max_vertices=args.max_vertices, solo_filas=solo_filas)
-            except Exception as e:
-                logging.error(f"Error en {file}: {str(e)}")
+
+        logging.info(
+            f"Procesando {file_in} → {file_out_csv}"
+            f"  (estrategia={args.estrategia}"
+            + (f", k={args.k}, metodo={args.metodo}" if args.estrategia == "kqnodes" else "")
+            + f", max_vertices={args.max_vertices})"
+        )
+        try:
+            run_tests(
+                file_in,
+                file_out_csv,
+                max_vertices=args.max_vertices,
+                solo_filas=solo_filas,
+                estrategia=args.estrategia,
+                k=args.k,
+                metodo=args.metodo,
+            )
+        except Exception as e:
+            logging.error(f"Error en {file}: {e}")
 
 
 if __name__ == "__main__":

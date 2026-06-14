@@ -16,15 +16,12 @@ init()
 
 class Solution:
     """
-    Clase Solution para representar y visualizar soluciones del sistema IIT.
-
     Esta clase maneja la representación, visualización y anunciación por voz de las soluciones
     encontradas durante el análisis de Integrated Information Theory (IIT). Proporciona
     funcionalidades para mostrar distribuciones de probabilidad, particiones del sistema
     y el valor φ (phi|small phi) asociado a la pérdida de información.
 
     Args:
-    ----
         estrategia (str):
             La estrategia utilizada para la resolución del problema.
 
@@ -55,7 +52,6 @@ class Solution:
             Si no se especifica, se busca automáticamente una voz en español.
 
     Attributes:
-    ----------
         perdida (float):
             El valor φ de la solución.
 
@@ -67,31 +63,6 @@ class Solution:
 
         particion (str):
             La representación de la mejor partición.
-
-        id_voz (Optional[str]):
-            El identificador de la voz seleccionada para la síntesis.
-
-    Examples:
-    --------
-    >>> # Crear una solución básica
-    >>> solucion = Solution(
-    ...     perdida=0.25,
-    ...     distribucion_subsistema=np.array([0.0, 1.0, 0.0, 0.0]),
-    ...     distribucion_particion=np.array([0.0, 0.75, 0.0, 0.25]),
-    ...     particion="⎛ A,C ⎞⎛ B ⎞
-    ...                ⎝a,b,c⎠⎝ ∅ ⎠"
-    ... )
-    >>> print(solucion)  # Muestra la solución formateada con colores
-
-    >>> # Crear una solución sin anuncio por voz
-    >>> solucion_silenciosa = Solution(
-    ...     perdida=0.25,
-    ...     distribucion_subsistema=np.array([0.0, 1.0, 0.0, 0.0]),
-    ...     distribucion_particion=np.array([0.0, 0.75, 0.0, 0.25]),
-    ...     particion="⎛ A,C ⎞⎛ B ⎞
-    ...                ⎝a,b,c⎠⎝ ∅ ⎠",
-    ...     hablar=False
-    ... )
     """
 
     def __init__(
@@ -110,7 +81,6 @@ class Solution:
         Consultar la documentación de la clase para detalles de los parámetros.
 
         Args:
-        ----
             estrategia: El nombre de la estrategia utilizada para la resolución del problema.
             perdida: El valor φ (small-phi) que representa la pérdida de información en la "bipartición" (comparado con el subsistema).
             distribucion_subsistema: Array que representa la distribución de probabilidad del subsistema.
@@ -138,25 +108,13 @@ class Solution:
         de diferentes regiones hispanohablantes.
 
         Args:
-        ----
             motor:
                 Instancia del motor de síntesis de voz pyttsx3.Engine.
 
         Returns:
-        -------
             Optional[str]:
                 El identificador de la voz seleccionada, o None si no se
                 encuentra ninguna voz.
-
-        Notes:
-        -----
-            El orden de prioridad es:
-            1. Sabina (México)
-            2. Helena (España)
-            3. Cualquier voz con "spanish" en el nombre
-            4. Cualquier voz con "español" en el nombre
-            5. Cualquier voz con "es-" en el identificador
-            6. Primera voz disponible si no se encuentra ninguna en español
         """
         voces: list[Voice] = motor.getProperty("voices")
 
@@ -186,12 +144,6 @@ class Solution:
         Esta función configura y utiliza el motor de síntesis de voz para anunciar de forma audible que se ha encontrado una solución, incluyendo el valor φ calculado.
 
         La función se ejecuta en un hilo separado para no bloquear la ejecución principal del programa mientras se realiza la síntesis de voz.
-
-        Notes:
-        -----
-            - Utilizar una velocidad de habla más lenta (150) para mejor comprensión
-            - Se establece el volumen al 90% por defecto
-            - Maneja excepciones de forma silenciosa para no interrumpir la ejecución
         """
         try:
             motor = pyttsx3.init()
@@ -218,7 +170,6 @@ class Solution:
         Genera una representación en string formateada y coloreadita de la solución.
 
         Returns:
-        -------
             str:
                 Representación visual de la solución que incluye:
                 - Valor φ en verdecito
@@ -227,7 +178,6 @@ class Solution:
                 - Elementos decorativos en cyan
 
         Notes:
-        -----
             Utiliza la biblioteca colorama para el formato de colores, permitiedo una visualización clara por terminal.
         """
         espaciado = 64
@@ -256,8 +206,9 @@ class Solution:
             return f"[ {datos}{mensaje_desborde} {Fore.WHITE}]"
 
         if self.hablar:
-            voz = Thread(target=self.__anunciar_solucion)
+            voz = Thread(target=self.__anunciar_solucion, daemon=True)
             voz.start()
+            voz.join(timeout=10)
 
         es_pyphi = self.estrategia == PYPHI_LABEL
         tipo_distribucion = "tensorial" if es_pyphi else "marginal"
@@ -281,7 +232,7 @@ class Solution:
 {Fore.YELLOW}Distribucion {tipo_distribucion} de la Partición:
 {Style.RESET_ALL}{formatear_distribucion(self.distribucion_particion)}
 
-{Fore.YELLOW}Mejor Bi-Partición:
+{Fore.YELLOW}Mejor Partición:
 {Fore.MAGENTA}{self.particion}
 {Fore.GREEN}Perdida mínima ( φ ) = {self.perdida:.4f}
 
