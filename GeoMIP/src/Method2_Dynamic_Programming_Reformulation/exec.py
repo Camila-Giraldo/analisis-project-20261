@@ -7,7 +7,7 @@ from pathlib import Path
 def main():
     """Inicializar el aplicativo."""
 
-    aplicacion.profiler_habilitado = True
+    aplicacion.profiler_habilitado = False
     # aplicacion.pagina_sample_network = "B"
 
     # Generar N15A.csv si no existe
