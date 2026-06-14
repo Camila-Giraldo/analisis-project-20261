@@ -2,7 +2,7 @@
 
 # from src.controllers.strategies.force import BruteForce
 # from src.controllers.strategies.q_nodes import QNodes
-# from src.controllers.strategies.geometric import GeometricSIA
+# from src.controllers.strategies.kgeomip import KGeoMIP
 
 
 # def iniciar():
@@ -56,7 +56,7 @@
 #     gestor_sistema = Manager(estado_inicial)
 
 #     ### Ejemplo de solución mediante módulo de fuerza bruta ###
-#     analizador_fb = GeometricSIA(gestor_sistema)
+#     analizador_fb = KGeoMIP(gestor_sistema)
 #     # analizador_fb = BruteForce(gestor_sistema)
 #     sia_uno = analizador_fb.aplicar_estrategia(
 #         condiciones,
@@ -65,7 +65,7 @@
 #     )
 #     print(sia_uno)
 from src.controllers.manager import Manager
-from src.controllers.strategies.geometric import GeometricSIA
+from src.controllers.strategies.kgeomip import KGeoMIP
 from src.controllers.strategies.q_nodes import QNodes
 from src.controllers.strategies.geometric_generalized import GeometricSIAGeneralizada
 # Optional import: this project often runs only geometric strategy.
@@ -101,7 +101,7 @@ def ejecutar_con_tiempo(config_sistema, condiciones, alcance, mecanismo, resulta
             tpm = np.load(str(tpm_path), mmap_mode='r')
         else:
             tpm = np.genfromtxt(str(tpm_path), delimiter=',', dtype=np.float32)
-        analizador_fi = GeometricSIA(config_sistema, k=k)
+        analizador_fi = KGeoMIP(config_sistema, k=k)
         sia_dos = analizador_fi.aplicar_estrategia(condiciones, alcance, mecanismo, tpm)
         resultado_queue.put({
             "particion": sia_dos.particion,

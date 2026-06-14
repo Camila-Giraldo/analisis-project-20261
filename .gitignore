@@ -56,10 +56,10 @@ build/
 
 .logQNodes/src/.samples/
 
-/GeoMIP/data/samples/
+/KGeoMIP/data/samples/
 
-GeoMIP/src/Method2_Dynamic_Programming_Reformulation/src/.samples/
+/KGeoMIP/src/Method2_Dynamic_Programming_Reformulation/src/.samples/
 
 /QNodes/src/.samples/
 
-/GeoMIP/results/k*/
+/KGeoMIP/results/k*/
