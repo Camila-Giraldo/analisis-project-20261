@@ -84,8 +84,8 @@ from pathlib import Path
 METHOD2_ROOT = Path(__file__).resolve().parents[1]
 GEOMIP_ROOT = Path(__file__).resolve().parents[3]
 
-def convertir_a_binario(texto, n_bits=22):
-    posiciones = "ABCDEFGHIJKLMNOPQRSTUV"[:n_bits]
+def convertir_a_binario(texto, n_bits=25):
+    posiciones = "ABCDEFGHIJKLMNOPQRSTUVWXY"[:n_bits]
     binario = ["0"] * n_bits
     for letra in texto:
         if letra in posiciones:
@@ -98,8 +98,8 @@ def ejecutar_con_tiempo(config_sistema, condiciones, alcance, mecanismo, resulta
         sia_dos = analizador_fi.aplicar_estrategia(condiciones, alcance, mecanismo, tpm)
         resultado_queue.put({
             "particion": sia_dos.particion,
-            "perdida": str(sia_dos.perdida).replace('.', ','),
-            "tiempo": str(sia_dos.tiempo_ejecucion).replace('.', ','),
+            "perdida": float(sia_dos.perdida),
+            "tiempo": float(sia_dos.tiempo_ejecucion),
         })
 
     except Exception as e:
@@ -114,8 +114,8 @@ def ejecutar_con_tiempo_generalizado(config_sistema, k, resultado_queue):
         res = GeometricSIAGeneralizada(config_sistema, k=k).aplicar_estrategia()
         resultado_queue.put({
             "particion":  str([sorted(s) for s in res['particion']]),
-            "perdida":    str(res['phi']).replace('.', ','),
-            "tiempo":     str(res['tiempo']).replace('.', ','),
+            "perdida":    float(res['phi']),
+            "tiempo":     float(res['tiempo']),
             "k_natural":  res['k_natural'],
             "k_encontrado": res['k_encontrado'],
         })
@@ -247,14 +247,26 @@ def ejecutar_desde_excel(
     condiciones: str | None = None,
     k: int = 2,
 ):
-    df_header = pd.read_excel(ruta_excel, sheet_name=4, header=None, usecols="E", nrows=2)
-    df = pd.read_excel(ruta_excel, sheet_name=4, usecols="B", skiprows=2, names=["Subsistema"]) #! here
+    df_header = pd.read_excel(ruta_excel, sheet_name=5, header=None, usecols="E", nrows=2, dtype=str)
+    df = pd.read_excel(ruta_excel, sheet_name=5, usecols="B", skiprows=2, names=["Subsistema"]) #! here
     filas = df["Subsistema"].dropna().tolist()
     filas = filas[inicio:inicio + cantidad]
     resultados = []
 
     raw = df_header.iloc[1, 0]
-    estado_inicio_excel = str(int(raw)).strip() if not pd.isna(raw) else None
+    if isinstance(raw, str) and raw.strip():
+        s = raw.strip()
+        # Si pandas leyó el float como string científico o con dígitos de ruido,
+        # reconstruir usando solo los dígitos binarios válidos (0 y 1).
+        if all(c in '01' for c in s):
+            estado_inicio_excel = s
+        else:
+            # Celda guardada como número: reconstruir desde float
+            import math
+            n_bits = round(math.log10(float(s))) if float(s) > 0 else 0
+            estado_inicio_excel = "1" + "0" * n_bits
+    else:
+        estado_inicio_excel = None
     print(f"Estado inicial leído desde Excel (E2): {estado_inicio_excel}")
     estado_inicio = estado_inicio or estado_inicio_excel or inferir_estado_inicial()
     condiciones = condiciones or ("1" * len(estado_inicio))
@@ -314,7 +326,7 @@ def iniciar():
     ruta_salida = Path(
         os.getenv(
             "GEOMIP_OUTPUT_XLSX",
-            str(GEOMIP_ROOT / "results" / "resultados_Geometric_22A3.xlsx"),
+            str(GEOMIP_ROOT / "results/k3" / "resultados_Geometric_25A3.xlsx"),
         )
     )
 

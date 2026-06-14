@@ -61,3 +61,5 @@ build/
 GeoMIP/src/Method2_Dynamic_Programming_Reformulation/src/.samples/
 
 /QNodes/src/.samples/
+
+/GeoMIP/results/k*/
