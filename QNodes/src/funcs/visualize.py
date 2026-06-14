@@ -30,6 +30,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 import matplotlib.lines as mlines
+
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
 FUTURO, PRESENTE = 1, 0
@@ -290,6 +291,166 @@ def plot_kparticion_hypercube(
 
     fig.tight_layout()
     return fig
+
+
+# ---------------------------------------------------------------------------
+# Vista bipartita por bloque
+# ---------------------------------------------------------------------------
+
+def _dibujar_bipartito_bloque(
+    ax,
+    bloque: list[tuple[int, int]],
+    b_idx: int,
+    valores: dict[tuple[int, int], str] | None = None,
+) -> None:
+    """Dibuja un único bloque como grafo bipartito con el mismo estilo que
+    ``_dibujar_bipartito``: círculos para futuros (t+1), cuadrados para presentes (t).
+
+    Args:
+        valores: dict opcional ``{(tiempo, idx): texto}`` con el valor a mostrar
+            debajo de cada nodo. Para futuros se sugiere la probabilidad marginal
+            formateada (ej. ``"0.732"``); para presentes el estado inicial (``"0"``/``"1"``).
+    """
+    color = _COLORES[b_idx % len(_COLORES)]
+
+    fut_indices = sorted(idx for t, idx in bloque if t == FUTURO)
+    pre_indices = sorted(idx for t, idx in bloque if t == PRESENTE)
+    n_fut = len(fut_indices)
+    n_pre = len(pre_indices)
+
+    def _x(pos, total):
+        return pos / (total - 1) if total > 1 else 0.5
+
+    pos_fut = {idx: (_x(i, n_fut), 1.0) for i, idx in enumerate(fut_indices)}
+    pos_pre = {idx: (_x(i, n_pre), 0.0) for i, idx in enumerate(pre_indices)}
+
+    for fi in fut_indices:
+        for pi in pre_indices:
+            x1, y1 = pos_fut[fi]
+            x2, y2 = pos_pre[pi]
+            ax.plot([x1, x2], [y1, y2], color=color, alpha=0.20, lw=1.5, zorder=1)
+
+    NODE_SIZE = 600
+    VAL_Y_OFFSET = 0.22  # distancia vertical nodo → texto del valor
+
+    for idx in fut_indices:
+        x, y = pos_fut[idx]
+        label = _ABC[idx] if idx < len(_ABC) else str(idx)
+        ax.scatter(x, y, color=color, s=NODE_SIZE, zorder=3,
+                   edgecolors="black", linewidths=1.5, marker="o")
+        ax.text(x, y, label, ha="center", va="center",
+                fontsize=10, fontweight="bold", color="white", zorder=4)
+        if valores is not None:
+            val = valores.get((FUTURO, idx))
+            if val is not None:
+                ax.text(x, y - VAL_Y_OFFSET, val,
+                        ha="center", va="top", fontsize=7.5,
+                        color="#333333", zorder=4)
+
+    for idx in pre_indices:
+        x, y = pos_pre[idx]
+        label = _ABC[idx].lower() if idx < len(_ABC) else str(idx)
+        ax.scatter(x, y, color=color, s=NODE_SIZE, zorder=3,
+                   edgecolors="black", linewidths=1.5, marker="s")
+        ax.text(x, y, label, ha="center", va="center",
+                fontsize=10, fontweight="bold", color="white", zorder=4)
+        if valores is not None:
+            val = valores.get((PRESENTE, idx))
+            if val is not None:
+                ax.text(x, y - VAL_Y_OFFSET, val,
+                        ha="center", va="top", fontsize=7.5,
+                        color="#333333", zorder=4)
+
+    ax.text(-0.04, 1.0, "t+1", ha="right", va="center",
+            fontsize=9, style="italic", color="#555555")
+    ax.text(-0.04, 0.0, "t", ha="right", va="center",
+            fontsize=9, style="italic", color="#555555")
+
+    ylim_bot = -0.45 if valores is not None else -0.28
+    ax.set_xlim(-0.12, 1.12)
+    ax.set_ylim(ylim_bot, 1.28)
+    ax.axis("off")
+
+
+def save_kparticion_multivista(
+    bloques: list[list[tuple[int, int]]],
+    n_bits: int,
+    carpeta: str | Path,
+    titulo: str = "",
+    dpi: int = 150,
+    valores: dict[tuple[int, int], str] | None = None,
+) -> list[Path]:
+    """Guarda la k-partición como múltiples grafos bipartitos en ``carpeta``.
+
+    Genera un archivo por bloque (mismo estilo visual que la vista general)
+    más una vista de conjunto con todos los bloques coloreados.
+
+    Archivos generados:
+
+    - ``00_vision_general.png``: todos los bloques en un único grafo bipartito.
+    - ``bloque_{b:02d}.png``: grafo bipartito individual para cada bloque.
+
+    Args:
+        bloques: k-partición (misma estructura que ``plot_kparticion_hypercube``).
+        n_bits: dimensión del sistema.
+        carpeta: directorio de salida (se crea si no existe).
+        titulo: título base para todas las figuras.
+        dpi: resolución de salida.
+        valores: dict opcional ``{(tiempo, idx): texto}`` con el valor de cada nodo.
+            Futuros → probabilidad marginal del bloque; presentes → estado inicial.
+            Si es ``None`` no se muestran valores adicionales.
+
+    Returns:
+        Lista de rutas ``Path`` de los archivos generados.
+    """
+    carpeta = Path(carpeta)
+    carpeta.mkdir(parents=True, exist_ok=True)
+
+    k = len(bloques)
+    rutas: list[Path] = []
+
+    # Vista general con todos los bloques
+    fig_gen = plot_kparticion_hypercube(
+        bloques, n_bits,
+        titulo=titulo or f"k={k}-partición · N{n_bits} — visión general",
+    )
+    ruta_gen = carpeta / "00_vision_general.png"
+    fig_gen.savefig(ruta_gen, dpi=dpi, bbox_inches="tight")
+    plt.close(fig_gen)
+    rutas.append(ruta_gen)
+
+    # Un grafo bipartito por bloque
+    for b_idx, bloque in enumerate(bloques):
+        n_fut = sum(1 for t, _ in bloque if t == FUTURO)
+        n_pre = sum(1 for t, _ in bloque if t == PRESENTE)
+        subtitulo = (
+            f"{titulo + ' — ' if titulo else ''}"
+            f"Bloque {b_idx}  ({n_fut} futuro{'s' if n_fut != 1 else ''} · "
+            f"{n_pre} presente{'s' if n_pre != 1 else ''})"
+        )
+
+        ancho = max(5, (max(n_fut, n_pre, 1)) * 0.9 + 2)
+        fig, ax = plt.subplots(figsize=(ancho, 4))
+        _dibujar_bipartito_bloque(ax, bloque, b_idx, valores=valores)
+        ax.set_title(subtitulo, fontsize=9, pad=8)
+
+        color = _COLORES[b_idx % len(_COLORES)]
+        handles = [
+            Patch(facecolor=color, edgecolor="black", label=f"Bloque {b_idx}"),
+            mlines.Line2D([], [], marker="o", color="w", markerfacecolor=color,
+                          markeredgecolor="black", markersize=9, label="futuro  ○"),
+            mlines.Line2D([], [], marker="s", color="w", markerfacecolor=color,
+                          markeredgecolor="black", markersize=9, label="presente □"),
+        ]
+        ax.legend(handles=handles, loc="upper right", fontsize=8, framealpha=0.9)
+
+        fig.tight_layout()
+        ruta_bloque = carpeta / f"bloque_{b_idx:02d}.png"
+        fig.savefig(ruta_bloque, dpi=dpi, bbox_inches="tight")
+        plt.close(fig)
+        rutas.append(ruta_bloque)
+
+    return rutas
 
 
 def save_kparticion_hypercube(
