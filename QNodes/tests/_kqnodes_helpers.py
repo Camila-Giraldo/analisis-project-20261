@@ -14,8 +14,8 @@ ambos coincidan cross-valida tanto el teorema de separabilidad como la búsqueda
 import math
 
 from src.controllers.manager import Manager
-from src.strategies.KQNodes import KQNodes
-from src.strategies.force import BruteForce
+from src.controllers.strategies.KQNodes import KQNodes
+from src.controllers.strategies.force import BruteForce
 from src.funcs.iit import emd_efecto
 from src.constants.base import ACTUAL, EFFECT
 

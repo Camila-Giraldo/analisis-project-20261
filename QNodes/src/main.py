@@ -1,8 +1,8 @@
 from src.controllers.manager import Manager
 
 # 👇 Importación de estrategias 👇 #
-from src.strategies.q_nodes import QNodes
-from src.strategies.KQNodes import KQNodes
+from src.controllers.strategies.q_nodes import QNodes
+from src.controllers.strategies.KQNodes import KQNodes
 
 
 def iniciar():

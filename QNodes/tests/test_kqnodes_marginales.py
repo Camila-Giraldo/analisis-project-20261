@@ -11,7 +11,7 @@ refactorización modular).
 
 import numpy as np
 
-from src.strategies.KQNodes import KQNodes
+from src.controllers.strategies.KQNodes import KQNodes
 from src.funcs.iit import emd_efecto
 from tests._kqnodes_helpers import TOL, build_kq, kbruteforce
 

@@ -14,8 +14,8 @@ import time
 import os
 import logging
 from controllers.manager import Manager
-from strategies.q_nodes import QNodes
-from strategies.KQNodes import KQNodes
+from controllers.strategies.q_nodes import QNodes
+from controllers.strategies.KQNodes import KQNodes
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 

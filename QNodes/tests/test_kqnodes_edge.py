@@ -9,7 +9,7 @@ import math
 
 import pytest
 
-from src.strategies.KQNodes import KQNodes
+from src.controllers.strategies.KQNodes import KQNodes
 from tests._kqnodes_helpers import build_kq, vertices
 
 

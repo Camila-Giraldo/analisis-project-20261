@@ -11,7 +11,7 @@ Función principal:
 
 Ejemplo de uso:
     from src.controllers.manager import Manager
-    from src.strategies.KQNodes import KQNodes
+    from src.controllers.strategies.KQNodes import KQNodes
     from src.funcs.visualize import save_kparticion_hypercube
 
     tpm = Manager("1000").cargar_red()
