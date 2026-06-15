@@ -1,6 +1,5 @@
 from src.controllers.manager import Manager
 from src.controllers.strategies.KGeoMIP import KGeoMIP
-from src.controllers.strategies.q_nodes import QNodes
 from src.controllers.strategies.geometric_generalized import GeometricSIAGeneralizada
 # Optional import: this project often runs only geometric strategy.
 try:
