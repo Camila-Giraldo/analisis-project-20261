@@ -73,7 +73,7 @@ class Solution:
         distribucion_particion: np.ndarray,
         particion: str,
         tiempo_total: float = FLOAT_ZERO,
-        quiere_hablar: bool = True,
+        quiere_hablar: bool = False,
         voz: Optional[str] = None,
     ) -> None:
         """

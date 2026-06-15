@@ -8,10 +8,10 @@ from src.controllers.strategies.KQNodes import KQNodes
 def iniciar():
     """Punto de entrada QNodes (bipartición)."""
 
-    estado_inicial = "1000000000"
-    condiciones =    "1111111111"
-    alcance =        "1111111111"
-    mecanismo =      "1111111111"
+    estado_inicial = "1000"
+    condiciones =    "1111"
+    alcance =        "1111"
+    mecanismo =      "1111"
 
     gestor_redes = Manager(estado_inicial)
     mpt = gestor_redes.cargar_red()
@@ -37,15 +37,14 @@ def iniciar_kqnodes(k: int = 3, metodo: str = "auto", guardar_viz: str = ""):
             Si está vacío se usa "KQNodes_graphics" como raíz.
             Para n_bits ≤ 3 se trata como ruta directa al archivo PNG.
     """
-    estado    = "1000000000"
-    cond      = "1111111111"
-    alcance   = "1111111111"
-    mecanismo = "1111111111"
-
+    estado =         "100000000000"
+    condiciones =    "111111111111"
+    alcance =        "111111111111"
+    mecanismo =      "111111111111"
     n_bits = len(estado)
     mpt = Manager(estado).cargar_red()
     analizador = KQNodes(mpt)
-    sol = analizador.aplicar_estrategia(estado, cond, alcance, mecanismo, k, metodo=metodo)
+    sol = analizador.aplicar_estrategia(estado, condiciones, alcance, mecanismo, k, metodo=metodo)
     print(sol)
 
     if n_bits <= 3:

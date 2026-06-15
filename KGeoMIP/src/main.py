@@ -310,18 +310,18 @@ def iniciar():
     ruta_entrada = Path(
         os.getenv(
             "GEOMIP_INPUT_XLSX",
-            str(GEOMIP_ROOT / "results" / "Pruebas_iniciales_Metodo2.xlsx"),
+            str(GEOMIP_ROOT / "results" / "Pruebas_video.xlsx"),
         )
     )
     ruta_salida = Path(
         os.getenv(
             "GEOMIP_OUTPUT_XLSX",
-            str(GEOMIP_ROOT / "results/k2" / "resultados_Geometric_10A2.xlsx"),
+            str(GEOMIP_ROOT / "results/k3" / "resultados_Geometric_12A3.xlsx"),
         )
     )
 
     ejecutar_desde_excel(
         ruta_entrada,
         ruta_salida,
-        k=2,
+        k=3,
     ) 

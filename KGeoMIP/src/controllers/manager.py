@@ -56,7 +56,7 @@ class Manager:
                 return
 
         # Keep the configured default but as an absolute path from Method2 root.
-        self.ruta_base = (method2_root / self.ruta_base).resolve()
+        self.ruta_base = (geomip_root / self.ruta_base).resolve()
 
     @property
     def pagina(self) -> str:

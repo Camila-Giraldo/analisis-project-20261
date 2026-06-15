@@ -26,13 +26,21 @@ class _SearchKNMixin:
             (EMD) disminuya. Converge en O(n × k) iteraciones.
         """
         self.memoria_particiones = {}
+        # No se pueden formar más grupos no vacíos que variables disponibles.
+        # Sin este tope, pedir k > n_vars deja el `while` girando para siempre
+        # porque _split_mejor_grupo no puede dividir grupos de tamaño 1.
+        k = min(k, len(self.sia_subsistema.indices_ncubos))
+
         mip_k2 = self._find_mip_k2()
         grupos = self._grupos_desde_mip_k2(mip_k2)
 
         while len(grupos) < k:
-            grupos = self._split_mejor_grupo(grupos)
-            if len(grupos) == 1:
+            nuevos = self._split_mejor_grupo(grupos)
+            if len(nuevos) <= len(grupos):
+                # El split no progresó (grupo mayor ya es singleton): cortar
+                # para no quedar en bucle infinito.
                 break
+            grupos = nuevos
 
         grupos = self._hill_climbing(grupos)
 

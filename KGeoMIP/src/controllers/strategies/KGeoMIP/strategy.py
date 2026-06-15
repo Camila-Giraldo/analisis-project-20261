@@ -7,12 +7,11 @@ import time
 import numpy as np
 
 from src.constants.base import NET_LABEL, ACTUAL, EFECTO, TYPE_TAG
-from src.constants.models import GEOMETRIC_ANALYSIS_TAG, GEOMETRIC_LABEL, GEOMETRIC_STRAREGY_TAG
+from src.constants.models import GEOMETRIC_ANALYSIS_TAG, GEOMETRIC_LABEL
 from src.controllers.manager import Manager
 from src.funcs.base import ABECEDARY
 from src.funcs.format import fmt_biparte_q
 from src.middlewares.profile import profiler_manager, profile
-from src.middlewares.slogger import SafeLogger
 from src.models.base.sia import SIA
 from src.models.core.solution import Solution
 
@@ -45,7 +44,6 @@ class KGeoMIP(_SearchKNMixin, _SearchK2Mixin, _PartitionMixin, _TableMixin, _Sam
         )
         self.k = k
         self.etiquetas = [tuple(s.lower() for s in ABECEDARY), ABECEDARY]
-        self.logger = SafeLogger(GEOMETRIC_STRAREGY_TAG)
         self.vertices: set[tuple]
         self.memoria_particiones: dict[tuple, tuple[float, np.ndarray]] = {}
         # float32 por variable; llenado en aplicar_estrategia
