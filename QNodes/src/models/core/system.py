@@ -258,8 +258,6 @@ class System:
                 else cubo.marginalizar(mecanismo)
                 for cubo in self.ncubos
             )
-        else:
-            self.memo[clave] = self.memo[clave]
 
         nuevo_sistema.ncubos = self.memo[clave]
 
