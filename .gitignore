@@ -54,12 +54,11 @@ htmlcov/
 dist/
 build/
 
-.logQNodes/src/.samples/
-
+# Samples (large data files)
+/KGeoMIP/src/.samples/
 /KGeoMIP/data/samples/
-
-/KGeoMIP/src/Method2_Dynamic_Programming_Reformulation/src/.samples/
-
 /QNodes/src/.samples/
+*.npy
+*.csv
 
 /KGeoMIP/results/k*/
