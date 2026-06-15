@@ -81,8 +81,8 @@ import re
 from pathlib import Path
 
 
-METHOD2_ROOT = Path(__file__).resolve().parents[1]
-GEOMIP_ROOT = Path(__file__).resolve().parents[3]
+GEOMIP_ROOT = Path(__file__).resolve().parents[1]
+METHOD2_ROOT = GEOMIP_ROOT
 
 def convertir_a_binario(texto, n_bits=25):
     posiciones = "ABCDEFGHIJKLMNOPQRSTUVWXY"[:n_bits]
