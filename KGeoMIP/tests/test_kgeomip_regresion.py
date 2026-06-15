@@ -14,7 +14,7 @@ Valores de referencia extraídos de:
 
 import pytest
 
-from src.controllers.strategies.kgeomip import KGeoMIP
+from src.controllers.strategies.KGeoMIP import KGeoMIP
 
 TOL = 1e-5
 
