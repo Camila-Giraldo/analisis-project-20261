@@ -43,11 +43,10 @@ class Manager:
                 self.ruta_base = env_path
                 return
 
-        method2_root = Path(__file__).resolve().parents[2]
-        geomip_root = Path(__file__).resolve().parents[4]
+        geomip_root = Path(__file__).resolve().parents[2]
         candidates = (
-            method2_root / "src" / ".samples",
-            method2_root / ".samples",
+            geomip_root / "src" / ".samples",
+            geomip_root / ".samples",
             geomip_root / "data" / "samples",
         )
 
