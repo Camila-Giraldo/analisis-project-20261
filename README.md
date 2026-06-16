@@ -1,87 +1,110 @@
 # Proyecto-20261
 
-Este repositorio contiene tres implementaciones principales para el analisis de MIP/IIT:
+Repositorio de análisis MIP/IIT con dos implementaciones principales:
 
-1. `QNodes` (base clasica, antes referida como Proyecto-2025A)
-2. `GeoMIP/src/Method2_Dynamic_Programming_Reformulation`
+1. **QNodes** — estrategia `KQNodes` basada en búsqueda heurística (simulated annealing) sobre particiones.
+2. **KGeoMIP** — estrategia `KGeoMIP` y `GeometricSIAGeneralizada` basadas en programación dinámica sobre una tabla geométrica de costos, con soporte para k ≥ 2 particiones.
 
 ## Requisitos
 
-- Linux (probado en Ubuntu)
-- Python 3.11+ (hay entornos locales con 3.12)
+- Python 3.11+
 - `uv` instalado
-
-Instalacion de `uv` (si no lo tienes):
 
 ```bash
 pip install uv
 ```
 
-## Estructura Rapida
+## Estructura del repositorio
 
-- `QNodes/`: ejecucion directa de un caso de prueba (`exec.py`).
-- `GeoMIP/src/Method1_GPU_Accelerated/`: procesamiento por lotes desde Excel.
-- `GeoMIP/src/Method2_Dynamic_Programming_Reformulation/`: procesamiento por lotes desde Excel.
-- `GeoMIP/data/samples/`: datasets TPM `N*.csv` usados por Method1/Method2.
-- `GeoMIP/results/`: archivos Excel de entrada/salida para Method1/Method2.
+```
+QNodes/
+  exec.py                   # Punto de entrada
+  src/
+    main.py                 # Configuración del caso a analizar
+    controllers/strategies/KQNodes/   # Estrategia KQNodes (annealing)
+    models/                 # NCube, System, Solution, SIA
+    funcs/                  # IIT, fuerza bruta, visualización
 
-## 1) Ejecutar QNodes
+KGeoMIP/
+  exec.py                   # Punto de entrada
+  data/creation.py          # Generación de datasets TPM
+  src/
+    main.py                 # Flujo de ejecución desde Excel
+    controllers/strategies/KGeoMIP/          # Estrategia k-partición DP
+    controllers/strategies/geometric_generalized/  # GeometricSIAGeneralizada
+    graphics/               # Generación de figuras comparativas (matplotlib)
+    models/                 # NCube, System, Solution, SIA
+  results/                  # Excels de entrada y salida
+  tests/                    # Tests de regresión
+```
 
-### Dependencias
+## 1) QNodes
 
-Desde `QNodes/`:
+### Instalación
 
 ```bash
 cd QNodes
 uv sync
 ```
 
-### Ejecucion
+### Ejecución
 
 ```bash
 uv run exec.py
 ```
 
-### Que hace
+### Configuración
 
-- Carga una red desde `QNodes/src/.samples/` (segun el estado inicial y pagina configurada).
-- Ejecuta estrategia `BruteForce` desde `QNodes/src/main.py`.
-- Imprime la solucion en consola.
+Edita `QNodes/src/main.py` para ajustar:
 
-### Ajustes comunes
+- `estado_inicial` — estado de inicio de la red.
+- `condiciones`, `alcance`, `mecanismo` — parámetros del subsistema a analizar.
 
-Edita `QNodes/src/main.py`:
+Las redes se cargan desde `QNodes/src/.samples/`. Si la ejecución termina rápido no es necesariamente un error: puede ser un caso pequeño o `phi = 0`.
 
-- `estado_inicial`
-- `condiciones`
-- `alcance`
-- `mecanismo`
-
-Si termina muy rapido, no necesariamente es error: puede ser un caso pequeno o corte temprano cuando `phi = 0`.
-
-## 3) Ejecutar Method2_Dynamic_Programming_Reformulation
-
-### Dependencias
-
-Desde `GeoMIP/src/Method2_Dynamic_Programming_Reformulation/`:
+### Tests
 
 ```bash
-cd GeoMIP/src/Method2_Dynamic_Programming_Reformulation
+cd QNodes
+uv run pytest tests/
+```
+
+## 2) KGeoMIP
+
+### Instalación
+
+```bash
+cd KGeoMIP
 uv sync
 ```
 
-### Ejecucion
+### Ejecución
 
 ```bash
 uv run exec.py
 ```
 
-### Entrada por defecto
+El punto de entrada `exec.py` llama a `iniciar()` en `src/main.py`, que lee un Excel de entrada y escribe los resultados en otro Excel.
 
-- Excel entrada: `GeoMIP/results/Pruebas_Metodo2.xlsx`
-- Hoja usada actualmente: indice `8`
-- Columna subsistema: `B`
+### Variables de entorno
 
-### Salida por defecto
+| Variable              | Descripción                        | Valor por defecto                           |
+|-----------------------|------------------------------------|---------------------------------------------|
+| `GEOMIP_INPUT_XLSX`   | Excel con los subsistemas a evaluar | `KGeoMIP/results/Pruebas_video.xlsx`        |
+| `GEOMIP_OUTPUT_XLSX`  | Excel de resultados                | `KGeoMIP/results/k3/resultados_Geometric_12A3.xlsx` |
 
-- Excel salida: `GeoMIP/results/resultados_Geometric.xlsx`
+### Estrategias disponibles
+
+- **`KGeoMIP`** (`src/controllers/strategies/KGeoMIP/`) — k-partición de mínima información mediante DP con tabla geométrica truncada adaptativamente, greedy jerárquico y hill climbing. Parámetro `k` (≥ 2).
+- **`GeometricSIAGeneralizada`** (`src/controllers/strategies/geometric_generalized/`) — variante generalizada que opera sobre el sistema completo (sin necesidad de columnas alcance/mecanismo en el Excel).
+
+### Datos TPM
+
+Los archivos `NxA.csv` se ubican en `KGeoMIP/data/samples/`. En la primera ejecución se convierten automáticamente a `.npy` (float32) para reducir el uso de RAM mediante memmap.
+
+### Tests de regresión
+
+```bash
+cd KGeoMIP
+uv run pytest tests/
+```
